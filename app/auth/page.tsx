@@ -15,7 +15,7 @@ function AuthContent() {
   const [workspaceName, setWorkspaceName] = useState<string | null>(null)
   
   const workspaceId = searchParams.get('workspaceId')
-  const nextPath = workspaceId ? `/workspace/${workspaceId}` : '/workspace'
+  const nextPath = "/platform"
 
   useEffect(() => {
     const fetchWorkspaceName = async () => {
