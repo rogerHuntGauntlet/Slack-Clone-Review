@@ -10,17 +10,25 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
+  // If we have a session and a workspace invite, join the workspace
+  const workspaceId = req.nextUrl.searchParams.get('workspaceId')
+  if (session && workspaceId && !req.nextUrl.pathname.startsWith('/auth')) {
+    return NextResponse.redirect(new URL(`/workspace/${workspaceId}`, req.url))
+  }
+
   // Refresh session if exists
   if (session) {
     return res
   }
 
-  // Redirect to login if no session and trying to access protected routes
+  // Redirect to auth if no session and trying to access protected routes
   const isProtectedRoute = req.nextUrl.pathname.startsWith('/workspace') ||
     req.nextUrl.pathname.startsWith('/chat')
 
   if (isProtectedRoute) {
-    return NextResponse.redirect(new URL('/login', req.url))
+    const authUrl = new URL('/auth', req.url)
+    authUrl.searchParams.set('next', req.nextUrl.pathname)
+    return NextResponse.redirect(authUrl)
   }
 
   return res

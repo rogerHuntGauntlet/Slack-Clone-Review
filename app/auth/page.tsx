@@ -1,160 +1,169 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { supabase } from '../../lib/supabase'
 
 export default function Auth() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
-  const router = useRouter()
-  const supabase = createClientComponentClient()
+  const [isLoading, setIsLoading] = useState(false)
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null)
+  
+  const workspaceId = searchParams.get('workspaceId')
+  const nextPath = workspaceId ? `/workspace/${workspaceId}` : '/workspace'
 
   useEffect(() => {
-    /**
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session && session.user.email) {
-        await fetchUserProfile(session.user.email)
-      }
-    }
-    checkSession()
-    */
-  }, [])
-
-  const fetchUserProfile = async (email: string) => {
-    try {
-      setMessage('Fetching user profile...')
-      let { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .single()
-
-      if (error && error.code === 'PGRST116') {
-        // Profile not found, create a new one
-        setMessage('Creating new user profile...')
-        const { data: newUser, error: createError } = await supabase
-          .from('users')
-          .insert({ email })
-          .select()
+    const fetchWorkspaceName = async () => {
+      if (workspaceId) {
+        const { data, error } = await supabase
+          .from('workspaces')
+          .select('name')
+          .eq('id', workspaceId)
           .single()
-
-        if (createError) throw createError
-        data = newUser
-      } else if (error) {
-        throw error
+        
+        if (!error && data) {
+          setWorkspaceName(data.name)
+        }
       }
+    }
 
-      if (data) {
-        setMessage('User profile fetched successfully. Redirecting...')
-        setTimeout(() => router.push('/platform'), 2000)
+    fetchWorkspaceName()
+  }, [workspaceId])
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      let authResponse;
+      
+      if (mode === 'signin') {
+        authResponse = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
       } else {
-        throw new Error('Failed to fetch or create user profile')
+        authResponse = await supabase.auth.signUp({
+          email,
+          password,
+        })
       }
-    } catch (error) {
-      console.error('Error fetching/creating user profile:', error)
-      setError('Failed to fetch or create user profile. Please try logging in again.')
-    }
-  }
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setMessage(null)
-    try {
-      setMessage('Signing in...')
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      const { data, error } = authResponse
       if (error) throw error
-      setMessage('Sign in successful. Fetching user profile...')
-      sessionStorage.setItem('userEmail', email) // Store email in localStorage
-      await fetchUserProfile(email)
+
+      if (workspaceId && data.user) {
+        // If this was an invite, join the workspace
+        const { error: joinError } = await supabase
+          .from('workspace_members')
+          .insert({
+            workspace_id: workspaceId,
+            user_id: data.user.id,
+            role: 'member'
+          })
+
+        if (joinError) throw joinError
+      }
+
+      router.push(nextPath)
     } catch (error: any) {
       setError(error.message)
-      setLoading(false)
     } finally {
-      //
-    }
-  }
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setMessage(null)
-    try {
-      setMessage('Signing up...')
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${location.origin}/auth/callback`,
-        },
-      })
-      if (error) throw error
-      setMessage('Sign up successful. Please check your email for confirmation.')
-    } catch (error: any) {
-      setError(error.message)
-      setLoading(false)
-    } finally {
-      //
+      setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-pink-300 to-blue-300 dark:from-pink-900 dark:to-blue-900">
-      <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md w-96">
-        <h1 className="text-2xl font-bold mb-6 text-center text-gray-900 dark:text-white">Welcome to ChatGenius</h1>
-        {error && <p className="text-red-500 mb-4" role="alert">{error}</p>}
-        {message && <p className="text-green-500 mb-4" role="status">{message}</p>}
-        <form className="space-y-4">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Email
-            </label>
-            <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-gray-900 dark:text-white dark:bg-gray-700 dark:border-gray-600"
-            />
+    <div className="min-h-screen flex items-center justify-center bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-white">
+            {workspaceId 
+              ? `Join ${workspaceName || 'Workspace'}` 
+              : mode === 'signin' ? "Sign in to your account" : "Create your account"}
+          </h2>
+          {workspaceId && (
+            <p className="mt-2 text-center text-sm text-gray-400">
+              {workspaceName 
+                ? `You've been invited to join ${workspaceName}` 
+                : 'Sign in or create an account to join'}
+            </p>
+          )}
+        </div>
+        <form className="mt-8 space-y-6" onSubmit={handleAuth}>
+          {error && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+              {error}
+            </div>
+          )}
+          <div className="rounded-md shadow-sm -space-y-px">
+            <div>
+              <label htmlFor="email-address" className="sr-only">
+                Email address
+              </label>
+              <input
+                id="email-address"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                placeholder="Email address"
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="sr-only">
+                Password
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete={mode === 'signin' ? "current-password" : "new-password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                placeholder="Password"
+              />
+            </div>
           </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-gray-900 dark:text-white dark:bg-gray-700 dark:border-gray-600"
-            />
+
+          <div className="flex flex-col space-y-4">
+            <button
+              type="submit"
+              disabled={isLoading}
+              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white ${
+                isLoading 
+                  ? 'bg-blue-400 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
+              }`}
+            >
+              {isLoading 
+                ? 'Processing...' 
+                : mode === 'signin' 
+                  ? (workspaceId ? 'Sign in to join' : 'Sign in') 
+                  : (workspaceId ? 'Sign up to join' : 'Sign up')}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              {mode === 'signin' 
+                ? "Don't have an account? Sign up" 
+                : "Already have an account? Sign in"}
+            </button>
           </div>
-          <button
-            onClick={handleSignIn}
-            disabled={loading}
-            className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Processing...' : 'Sign In'}
-          </button>
-          <button
-            onClick={handleSignUp}
-            disabled={loading}
-            className="w-full bg-green-500 text-white p-2 rounded-md hover:bg-green-600 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Processing...' : 'Sign Up'}
-          </button>
         </form>
       </div>
     </div>

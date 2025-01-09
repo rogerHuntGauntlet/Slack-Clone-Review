@@ -1,5 +1,5 @@
-import { FC, useState } from "react";
-import { Moon, Sun, User, PlusCircle, LogOut } from 'lucide-react';
+import { FC } from "react";
+import { Moon, Sun, User, PlusCircle, LogOut, Menu } from 'lucide-react';
 import Link from 'next/link';
 
 interface HeaderProps {
@@ -12,44 +12,6 @@ interface HeaderProps {
   onReturnToWorkspaceSelection: () => void;
 }
 
-const randomPrompts = [
-  "Unraveling the secrets of community dominance...",
-  "Deciphering the path to ultimate influence...",
-  "Scheming for absolute efficiency and power...",
-  "Whispering truths only the bold dare ask...",
-  "Calculating the masterstroke to outshine everyone...",
-  "Peering into the shadows for hidden insights...",
-  "Crafting the ultimate strategy for control...",
-  "Exploring forbidden tactics of community engagement...",
-  "Devising flawless moves in the game of influence...",
-  "Unleashing clandestine wisdom for unparalleled success...",
-];
-
-const getRandomPrompt = () => {
-  const index = Math.floor(Math.random() * randomPrompts.length);
-  return randomPrompts[index];
-};
-
-const NavButton: FC<{
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-  hoverColor: string;
-  title?: string;
-}> = ({ onClick, icon, label, hoverColor, title }) => (
-  <button
-    onClick={onClick}
-    className={`flex items-center gap-2 min-w-[120px] justify-center text-white hover:text-${hoverColor} 
-    bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-4 py-2.5 
-    transition-all duration-300 hover:border-${hoverColor} hover:shadow-lg 
-    hover:shadow-${hoverColor}/20 hover:-translate-y-0.5`}
-    title={title}
-  >
-    {icon}
-    <span className="font-medium">{label}</span>
-  </button>
-);
-
 const Header: FC<HeaderProps> = ({
   currentUser,
   isDarkMode,
@@ -58,76 +20,74 @@ const Header: FC<HeaderProps> = ({
   onLogout,
   onReturnToWorkspaceSelection,
 }) => {
-  // const [isChatOpen, setChatOpen] = useState(false);
-  // const [currentPrompt, setCurrentPrompt] = useState("");
-
-  // const handleChatToggle = () => {
-  //   setChatOpen((prev) => !prev);
-  //   setCurrentPrompt(getRandomPrompt());
-  // };
-
   return (
-    <header className="relative">
-      {/* Top Gradient Bar */}
-      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500" />
-
-      {/* Header Content */}
-      <div className="bg-gray-900/80 backdrop-blur-xl shadow-2xl">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            {/* AI Assistant Button */}
-            <div className="relative">
-              <Link href="/ai-chat" className="relative z-10 flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-pink-500 via-purple-500 to-blue-500 shadow-lg hover:shadow-xl hover:scale-110 transition-transform">
+    <header className="relative z-10">
+      <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 via-purple-600/20 to-pink-600/20 backdrop-blur-xl" />
+      <div className="relative">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6">
+          <div className="flex justify-between items-center py-3 md:space-x-10">
+            <div className="flex items-center space-x-4">
+              <Link 
+                href="/ai-chat" 
+                className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 
+                  shadow-lg hover:shadow-blue-500/25 hover:scale-105 transition-all duration-200"
+              >
                 <img
                   src="https://media.tenor.com/NeaT_0PBOzQAAAAM/robot-reaction-eww.gif"
                   alt="AI Assistant"
-                  className="w-8 h-8"
+                  className="w-6 h-6 rounded-lg"
                 />
               </Link>
+              <span className="text-xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-purple-600">
+                ChatGenius
+              </span>
             </div>
 
-            {/* Logo */}
-            <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-              ChatGenius
-            </div>
-
-            {/* Navigation Buttons */}
-            <div className="flex items-center gap-3">
-              <NavButton
+            <div className="flex items-center space-x-2">
+              <button
                 onClick={onReturnToWorkspaceSelection}
-                icon={<PlusCircle className="w-5 h-5" />}
-                label="New"
-                hoverColor="blue-400"
-                title="Return to Workspace Selection"
-              />
+                className="flex items-center space-x-2 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 
+                  transition-colors duration-200"
+              >
+                <PlusCircle size={18} />
+                <span className="hidden sm:inline">Workspaces</span>
+              </button>
 
-              <NavButton
-                onClick={onOpenProfile}
-                icon={<User className="w-5 h-5" />}
-                label="Profile"
-                hoverColor="pink-400"
-              />
+              <div className="h-4 w-px bg-gray-300 dark:bg-gray-700" />
 
-              <NavButton
+              <button
                 onClick={toggleDarkMode}
-                icon={isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                label={isDarkMode ? "Light" : "Dark"}
-                hoverColor="yellow-400"
-              />
+                className="p-2 text-gray-700 dark:text-gray-300 hover:text-yellow-600 dark:hover:text-yellow-400 
+                  transition-colors duration-200"
+                title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              >
+                {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
 
-              <NavButton
+              <div className="relative group">
+                <button
+                  onClick={onOpenProfile}
+                  className="p-2 text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 
+                    transition-colors duration-200"
+                >
+                  <User size={18} />
+                </button>
+              </div>
+
+              <button
                 onClick={onLogout}
-                icon={<LogOut className="w-5 h-5" />}
-                label="Logout"
-                hoverColor="red-400"
+                className="p-2 text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 
+                  transition-colors duration-200"
                 title="Logout"
-              />
+              >
+                <LogOut size={18} />
+              </button>
             </div>
           </div>
         </div>
       </div>
     </header>
   );
-};
+}
 
 export default Header;

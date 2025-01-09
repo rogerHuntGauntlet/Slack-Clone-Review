@@ -37,7 +37,7 @@ const Sidebar: FC<SidebarProps> = ({
 }) => {
   const [showShareLink, setShowShareLink] = useState(false)
   const [shareLink, setShareLink] = useState('')
-  const [showWorkspaces, setShowWorkspaces] = useState(true)
+  const [showWorkspaces, setShowWorkspaces] = useState(false)
   const [channels, setChannels] = useState<Channel[]>([])
 
   useEffect(() => {
@@ -55,9 +55,36 @@ const Sidebar: FC<SidebarProps> = ({
   }
 
   const handleShareWorkspace = () => {
-    const link = `${window.location.origin}?workspaceId=${activeWorkspace}`
-    setShareLink(link)
-    setShowShareLink(true)
+    const link = `${window.location.origin}/auth?workspaceId=${activeWorkspace}`
+    navigator.clipboard.writeText(link)
+      .then(() => {
+        setShareLink(link)
+        setShowShareLink(true)
+        // Show toast notification
+        const toast = document.createElement('div')
+        toast.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-md shadow-lg transform transition-all duration-300 z-50'
+        toast.textContent = '✓ Link copied to clipboard!'
+        document.body.appendChild(toast)
+        
+        // Remove toast after 2 seconds
+        setTimeout(() => {
+          toast.style.opacity = '0'
+          setTimeout(() => document.body.removeChild(toast), 300)
+        }, 2000)
+      })
+      .catch(err => {
+        console.error('Failed to copy:', err)
+        // Show error toast
+        const toast = document.createElement('div')
+        toast.className = 'fixed bottom-4 right-4 bg-red-500 text-white px-4 py-2 rounded-md shadow-lg'
+        toast.textContent = '❌ Failed to copy link'
+        document.body.appendChild(toast)
+        
+        setTimeout(() => {
+          toast.style.opacity = '0'
+          setTimeout(() => document.body.removeChild(toast), 300)
+        }, 2000)
+      })
   }
 
   const currentWorkspace = workspaces.find(w => w.id === activeWorkspace)

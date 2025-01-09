@@ -6,7 +6,7 @@ import { supabase, getWorkspaceUsers } from '../lib/supabase'
 
 type DMListProps = {
   workspaceId: string
-  onSelectDM: (userId: string) => void
+  onSelectDMAction: (userId: string) => void
   activeUserId: string | null
   currentUserId: string
 }
@@ -19,7 +19,7 @@ interface DMUser {
   status: 'online' | 'offline' | 'away';
 }
 
-export default function CollapsibleDMList({ workspaceId, onSelectDM, activeUserId, currentUserId }: DMListProps) {
+export default function CollapsibleDMList({ workspaceId, onSelectDMAction, activeUserId, currentUserId }: DMListProps) {
   const [users, setUsers] = useState<DMUser[]>([])
   const [isCollapsed, setIsCollapsed] = useState(false)
 
@@ -54,7 +54,7 @@ export default function CollapsibleDMList({ workspaceId, onSelectDM, activeUserI
   }
 
   return (
-    <div className={`bg-gray-800 text-white h-full flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-16' : 'w-64'}`}>
+    <div className={`bg-gray-800 text-white h-full flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-56'}`}>
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
         className={`flex items-center p-4 hover:bg-gray-700 transition-colors ${isCollapsed ? 'justify-center' : 'justify-between'}`}
@@ -62,12 +62,12 @@ export default function CollapsibleDMList({ workspaceId, onSelectDM, activeUserI
         {!isCollapsed && <span className="text-xl font-bold">Direct Messages</span>}
         {isCollapsed ? <ChevronRight size={24} /> : <ChevronDown size={24} />}
       </button>
-      <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full">
+      <div className="flex-grow overflow-y-auto">
         <ul className="space-y-1 p-2">
           {users.map((user) => (
             <li key={user.id}>
               <button
-                onClick={() => onSelectDM(user.id)}
+                onClick={() => onSelectDMAction(user.id)}
                 className={`flex items-center w-full p-2 rounded-lg transition-all duration-200 ${
                   activeUserId === user.id ? 'bg-gray-700' : 'hover:bg-gray-700'
                 }`}

@@ -1,15 +1,15 @@
 .sidebar {
-  width: 260px;
+  width: 200px;
   height: 100vh;
   background-color: #19171D;
   color: #fff;
-  padding: 1rem;
+  padding: 0.75rem;
   display: flex;
   flex-direction: column;
 }
 
 .sidebar-header {
-  padding-bottom: 1rem;
+  padding-bottom: 0.75rem;
   border-bottom: 1px solid #333;
 }
 
@@ -19,6 +19,6 @@
 }
 
 .sidebar-footer {
-  padding-top: 1rem;
+  padding-top: 0.75rem;
   border-top: 1px solid #333;
 } 

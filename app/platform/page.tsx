@@ -13,6 +13,7 @@ import DirectMessageArea from '../../components/DirectMessageArea'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Suspense } from 'react'
 import type { Workspace } from '@/types/supabase'
+import ActivityFeed from '../../components/ActivityFeed'
 
 export default function Platform() {
   return (
@@ -42,6 +43,7 @@ function PlatformContent() {
   const MAX_USERS = 40
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [isChatExpanded, setIsChatExpanded] = useState(false)
 
   const supabase = createClientComponentClient()
 
@@ -398,58 +400,144 @@ console.log("userId: ", userId)
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-900">
-      <Header
-        currentUser={user}
-        isDarkMode={isDarkMode}
-        toggleDarkMode={toggleDarkMode}
-        onCreateWorkspace={() => setActiveWorkspace('')}
-        onOpenProfile={() => setShowProfileModal(true)}
-        onLogout={handleLogout}
-        onReturnToWorkspaceSelection={handleReturnToWorkspaceSelection}
-      />
-      <div className="flex flex-1 overflow-hidden">
-        <CollapsibleDMList
-          workspaceId={activeWorkspace}
-          onSelectDM={handleSelectDM}
-          activeUserId={activeDM}
-          currentUserId={user.id}
-        />
-        <Sidebar
-          activeWorkspace={activeWorkspace}
-          setActiveWorkspace={setActiveWorkspace}
-          activeChannel={activeChannel}
-          setActiveChannel={(channel) => {
-            setActiveChannel(channel)
-            setActiveDM(null)
-          }}
+    <div className="min-h-screen bg-gray-900 p-4">
+      <div className="flex h-[calc(100vh-2rem)] flex-col overflow-hidden bg-gray-50 dark:bg-gray-800/95 rounded-2xl shadow-2xl">
+        <Header
           currentUser={user}
-          workspaces={workspaces}
+          isDarkMode={isDarkMode}
+          toggleDarkMode={toggleDarkMode}
+          onCreateWorkspace={() => setActiveWorkspace('')}
+          onOpenProfile={() => setShowProfileModal(true)}
+          onLogout={handleLogout}
+          onReturnToWorkspaceSelection={handleReturnToWorkspaceSelection}
         />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {activeWorkspace && activeChannel && user && !activeDM && (
-            <ChatArea
-              activeWorkspace={activeWorkspace}
-              activeChannel={activeChannel}
-              currentUser={user}
-              onSwitchChannel={handleSwitchChannel}
-              userWorkspaces={userWorkspaceIds}
-            />
-          )}
-          {activeWorkspace && activeDM && user && (
-            <DirectMessageArea
-              currentUser={user}
-              otherUserId={activeDM}
-            />
-          )}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left sidebar section */}
+          <div className={`flex h-full transition-all duration-300 ${isChatExpanded ? 'w-0 opacity-0' : ''}`}>
+            {activeWorkspace && !isChatExpanded && (
+              <CollapsibleDMList
+                workspaceId={activeWorkspace}
+                onSelectDMAction={handleSelectDM}
+                activeUserId={activeDM}
+                currentUserId={user.id}
+              />
+            )}
+            {activeWorkspace && !isChatExpanded && (
+              <Sidebar
+                activeWorkspace={activeWorkspace}
+                setActiveWorkspace={setActiveWorkspace}
+                activeChannel={activeChannel}
+                setActiveChannel={(channel) => {
+                  setActiveChannel(channel)
+                  setActiveDM(null)
+                }}
+                currentUser={user}
+                workspaces={workspaces}
+              />
+            )}
+          </div>
+
+          {/* Main content area with dynamic width */}
+          <div className="flex-1 flex bg-white dark:bg-gray-800/80 rounded-tl-2xl shadow-xl overflow-hidden">
+            <div className={`flex-1 flex min-w-0 transition-all duration-300`}>
+              <style jsx global>{`
+                * {
+                  scrollbar-width: thin;
+                  scrollbar-color: rgba(156, 163, 175, 0.2) transparent;
+                }
+                
+                *::-webkit-scrollbar {
+                  width: 8px;
+                  height: 8px;
+                }
+                
+                *::-webkit-scrollbar-track {
+                  background: transparent;
+                  border-radius: 10px;
+                }
+                
+                *::-webkit-scrollbar-thumb {
+                  background-color: rgba(156, 163, 175, 0.2);
+                  border-radius: 10px;
+                  border: 2px solid transparent;
+                  background-clip: padding-box;
+                }
+                
+                *::-webkit-scrollbar-thumb:hover {
+                  background-color: rgba(156, 163, 175, 0.4);
+                }
+
+                *::-webkit-scrollbar-corner {
+                  background: transparent;
+                }
+                
+                .no-scrollbar::-webkit-scrollbar {
+                  display: none;
+                }
+                
+                .no-scrollbar {
+                  -ms-overflow-style: none;
+                  scrollbar-width: none;
+                }
+
+                /* Dark mode adjustments */
+                @media (prefers-color-scheme: dark) {
+                  *::-webkit-scrollbar-thumb {
+                    background-color: rgba(255, 255, 255, 0.1);
+                  }
+                  
+                  *::-webkit-scrollbar-thumb:hover {
+                    background-color: rgba(255, 255, 255, 0.2);
+                  }
+                }
+              `}</style>
+              {activeWorkspace && activeChannel && user && !activeDM && (
+                <ChatArea
+                  activeWorkspace={activeWorkspace}
+                  activeChannel={activeChannel}
+                  currentUser={user}
+                  onSwitchChannel={handleSwitchChannel}
+                  userWorkspaces={userWorkspaceIds}
+                  onToggleExpand={() => setIsChatExpanded(!isChatExpanded)}
+                  isExpanded={isChatExpanded}
+                />
+              )}
+
+              {activeWorkspace && activeDM && user && (
+                <DirectMessageArea
+                  currentUser={user}
+                  otherUserId={activeDM}
+                />
+              )}
+            </div>
+
+            {/* Activity Feed */}
+            {activeWorkspace && !activeDM && !isChatExpanded && (
+              <ActivityFeed onCollapse={(isCollapsed) => {
+                // This will trigger a re-render of the chat area
+                const chatArea = document.querySelector('.chat-area-container');
+                if (chatArea) {
+                  chatArea.classList.toggle('expanded', isCollapsed);
+                }
+              }} />
+            )}
+          </div>
         </div>
+
+        {/* Modals */}
+        {showProfileModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50">
+            <div className="flex items-center justify-center min-h-screen p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform transition-all">
+                <ProfileModal
+                  currentUser={user}
+                  onClose={() => setShowProfileModal(false)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-      {showProfileModal && (
-        <ProfileModal
-          currentUser={user}
-          onClose={() => setShowProfileModal(false)}
-        />
-      )}
     </div>
   )
 }
