@@ -26,7 +26,7 @@ export async function getChannels(workspaceId: string): Promise<Channel[]> {
     .from('channels')
     .select(`
       *,
-      messages!inner (
+      messages!left (
         created_at
       ),
       channel_views!left (
@@ -45,16 +45,21 @@ export async function getChannels(workspaceId: string): Promise<Channel[]> {
 
   // Calculate unread counts
   const channelsWithUnread = channels.map((channel: ChannelWithRelations) => {
+    const messageCount = channel.messages?.length || 0;
+    const hasViews = channel.channel_views?.length > 0;
+    const lastViewedAt = channel.channel_views?.[0]?.last_viewed_at;
+
     console.log(`📊 [getChannels] Processing channel ${channel.name}:`, {
-      messageCount: channel.messages?.length || 0,
-      hasViews: channel.channel_views?.length > 0,
-      lastViewed: channel.channel_views?.[0]?.last_viewed_at
+      messageCount,
+      hasViews,
+      lastViewedAt
     });
 
-    const lastViewedAt = channel.channel_views?.[0]?.last_viewed_at;
-    const unreadCount = lastViewedAt
-      ? channel.messages.filter((msg: { created_at: string }) => new Date(msg.created_at) > new Date(lastViewedAt)).length
-      : channel.messages.length;
+    const unreadCount = lastViewedAt && messageCount > 0
+      ? channel.messages.filter((msg: { created_at: string }) => 
+          msg && msg.created_at && new Date(msg.created_at) > new Date(lastViewedAt)
+        ).length
+      : messageCount;
 
     console.log(`📬 [getChannels] Unread count for ${channel.name}:`, unreadCount);
 
@@ -74,60 +79,34 @@ export async function getChannels(workspaceId: string): Promise<Channel[]> {
 
 export async function createChannel(name: string, workspaceId: string) {
   try {
-    // Get current user session
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not authenticated');
-
-    // Get AI user
-    const { data: aiUser } = await supabase
+    const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001';
+    
+    // First verify the system user exists
+    const { data: systemUser, error: systemUserError } = await supabase
       .from('user_profiles')
       .select('*')
-      .eq('email', 'ai.assistant@chatgenius.ai')
+      .eq('id', SYSTEM_USER_ID)
       .single();
 
-    if (!aiUser) {
-      throw new Error('AI user not found');
+    if (systemUserError || !systemUser) {
+      console.error('System user not found:', systemUserError);
+      throw new Error('System user not found. Please ensure the system user migration has been run.');
     }
-
+    
     // Create the channel
     const { data: channel, error: channelError } = await supabase
       .from('channels')
       .insert({
         name,
         workspace_id: workspaceId,
-        created_by: session.user.id
+        created_by: SYSTEM_USER_ID
       })
       .select()
       .single();
 
     if (channelError || !channel) {
+      console.error('Error creating channel:', channelError);
       throw new Error(channelError?.message || 'Failed to create channel');
-    }
-
-    // Add creator to channel members
-    const { error: creatorMemberError } = await supabase
-      .from('channel_members')
-      .insert({
-        channel_id: channel.id,
-        user_id: session.user.id,
-        role: 'admin'
-      });
-
-    if (creatorMemberError) {
-      throw new Error(`Failed to add creator to channel: ${creatorMemberError.message}`);
-    }
-
-    // Add AI user to channel members
-    const { error: aiMemberError } = await supabase
-      .from('channel_members')
-      .insert({
-        channel_id: channel.id,
-        user_id: aiUser.id,
-        role: 'member'
-      });
-
-    if (aiMemberError) {
-      throw new Error(`Failed to add AI to channel: ${aiMemberError.message}`);
     }
 
     // Create welcome message
@@ -136,7 +115,7 @@ export async function createChannel(name: string, workspaceId: string) {
       .insert({
         content: `Welcome to #${name}! This channel has been created for your team to collaborate and communicate effectively.`,
         channel_id: channel.id,
-        user_id: session.user.id,
+        user_id: SYSTEM_USER_ID,
         file_attachments: null,
         parent_id: null
       })
@@ -144,28 +123,14 @@ export async function createChannel(name: string, workspaceId: string) {
       .single();
 
     if (welcomeError || !welcomeMessage) {
+      console.error('Error creating welcome message:', welcomeError);
       throw new Error(`Failed to create welcome message: ${welcomeError?.message}`);
-    }
-
-    // Create AI welcome reply
-    const { error: aiReplyError } = await supabase
-      .from('messages')
-      .insert({
-        content: `I'll be here to help make this channel productive and engaging! Feel free to ask me any questions. 🚀`,
-        channel_id: channel.id,
-        user_id: aiUser.id,
-        parent_id: welcomeMessage.id,
-        file_attachments: null
-      });
-
-    if (aiReplyError) {
-      throw new Error(`Failed to create AI reply: ${aiReplyError.message}`);
     }
 
     return channel;
   } catch (error) {
-    const err = error as Error;
-    throw new Error(`Channel creation failed: ${err.message}`);
+    console.error('Channel creation failed:', error);
+    throw error;
   }
 }
 

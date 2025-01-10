@@ -98,15 +98,9 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
   useEffect(() => {
     const initializePlatform = async () => {
       addLog('PlatformContent component initializing...')
-      addLog('Testing Supabase connection...')
       
       try {
-        // Test Supabase connection
-        await testSupabaseConnection()
-        addLog('Supabase connection successful')
-
         // Check user session
-        addLog('Checking user session...')
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) {
           addLog('No session found')
@@ -114,11 +108,6 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
           return
         }
         addLog('Session found')
-        addLog(`User found in session: ${session.user.email}`)
-
-        // Test database tables
-        await testDatabaseTables()
-        addLog('Database tables verified')
 
         // Get user data
         const userData = await getUserByEmail(session.user.email!)
@@ -126,7 +115,6 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
           addLog('User profile not found, creating...')
           await createUserProfile(session.user)
         }
-        addLog(`User data retrieved: ${session.user.email}`)
 
         setUser({
           id: session.user.id,
@@ -134,21 +122,16 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
           username: userData?.username
         })
 
-        // Add user to universal workspace
-        addLog('Adding user to universal workspace...')
-        await addUserToUniversalWorkspace(session.user.id)
-
+        // Clear workspace state
+        setActiveWorkspace('')
+        setActiveChannel('')
+        
         // Fetch workspaces
-        addLog(`Fetching workspaces for user: ${session.user.id}`)
-        const fetchedWorkspaces = await getWorkspaces()
+        const fetchedWorkspaces = await getWorkspaces(session.user.id)
         setWorkspaces(fetchedWorkspaces)
-        addLog(`Fetched ${fetchedWorkspaces.length} workspaces`)
-
-        // Show workspace selection if no workspaces
-        if (fetchedWorkspaces.length === 0) {
-          addLog('No workspaces found, showing workspace selection')
-          setShowWorkspaceSelection(true)
-        }
+        
+        // Always show workspace selection
+        setShowWorkspaceSelection(true)
 
         // Get user count
         const count = await getUserCount()
@@ -185,10 +168,26 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
   }
 
   const fetchChannels = async (workspaceId: string) => {
+    if (!workspaceId) {
+      logger.log('No workspace ID provided to fetchChannels')
+      return
+    }
+
+    if (!user?.id) {
+      logger.log('No user ID available, deferring channel fetch')
+      return
+    }
+
     try {
-      const channels = await getChannels(workspaceId)
+      logger.log(`Fetching channels for workspace ${workspaceId} and user ${user.id}`)
+      const channels = await getChannels(workspaceId, user.id)
+      
       if (channels.length > 0) {
+        logger.log(`Setting active channel to ${channels[0].id}`)
         setActiveChannel(channels[0].id)
+      } else {
+        logger.log('No channels found for workspace')
+        setActiveChannel('')
       }
     } catch (error) {
       logger.error('Error fetching channels:', error)
@@ -215,26 +214,42 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
         return
       }
 
+      // Get session first
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        throw new Error('No session found')
+      }
+
       let userData = await getUserByEmail(email)
-      if (!userData) {
+      const isNewUser = !userData
+      
+      if (isNewUser) {
         if (userCount >= MAX_USERS) {
           setError("We've reached our user limit. Please check back later.")
           return
         }
-        userData = await createUserProfile(email)
+        userData = await createUserProfile({
+          id: session.user.id,
+          email: session.user.email
+        })
         if (!userData) {
           throw new Error('Failed to create user profile')
         }
         setUserCount(prevCount => prevCount + 1)
       }
+
       if (userData) {
+        // Set user data
         setUser({ id: userData.id, email: userData.email, username: userData.username })
-        const workspaceId = searchParams.get('workspaceId')
-        if (workspaceId) {
-          await handleJoinWorkspace(workspaceId)
-        } else {
-          setShowWorkspaceSelection(true)
-        }
+        
+        // Clear workspace state and show selection
+        setActiveWorkspace('')
+        setActiveChannel('')
+        setShowWorkspaceSelection(true)
+
+        // Fetch workspaces
+        const workspaces = await getWorkspaces(userData.id)
+        setWorkspaces(workspaces)
       } else {
         throw new Error('Failed to get or create user')
       }
@@ -251,61 +266,113 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
 
   const handleCreateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newWorkspaceName) {
+    if (!newWorkspaceName || !user) {
       setError('Please enter a workspace name')
       return
     }
     
     try {
-      logger.log('Creating workspace...')
-      const result = await createWorkspace(newWorkspaceName)
+      addLog('Creating workspace...')
+
+      // First ensure user profile exists
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        throw new Error('No session found')
+      }
+
+      // Check if user profile exists
+      let userData = await getUserByEmail(session.user.email!)
+      if (!userData) {
+        addLog('User profile not found, creating...')
+        userData = await createUserProfile({
+          id: session.user.id,
+          email: session.user.email
+        })
+        if (!userData) {
+          throw new Error('Failed to create user profile')
+        }
+      }
+
+      // Now create the workspace
+      const result = await createWorkspace(newWorkspaceName, userData.id)
       if (!result?.workspace) {
         logger.error('Failed to create workspace: No workspace data returned')
         setError('Failed to create workspace')
         return
       }
 
-      logger.log('Workspace created successfully')
+      addLog('Workspace created successfully')
       setWorkspaces(prevWorkspaces => [...prevWorkspaces, { 
         id: result.workspace.id,
         name: result.workspace.name,
         role: 'admin'
       }])
-      setActiveWorkspace(result.workspace.id)
-      if (result.channels && result.channels.length > 0) {
-        logger.log('Setting active channel...')
-        setActiveChannel(result.channels[0].id)
-      }
       setNewWorkspaceName('')
-      setShowWorkspaceSelection(false)
+      
+      // Don't automatically enter the workspace, let user choose
+      addLog('Workspace created, staying on selection screen')
     } catch (error: any) {
       logger.error('Error creating workspace:', error)
       setError(error.message || 'Failed to create workspace. Please try again.')
-      // Keep the workspace selection UI open if there was an error
-      setShowWorkspaceSelection(true)
     }
   }
 
   const handleJoinWorkspace = async (workspaceId: string) => {
+    if (!user) {
+      setError('User not found')
+      return
+    }
+
     try {
-      await joinWorkspace(workspaceId)
-      const updatedWorkspaces = await getWorkspaces()
+      addLog(`Joining workspace ${workspaceId}...`)
+      await joinWorkspace(workspaceId, user.id)
+      
+      // Fetch updated workspaces list
+      const updatedWorkspaces = await getWorkspaces(user.id)
       setWorkspaces(updatedWorkspaces)
       setUserWorkspaceIds(updatedWorkspaces.map((workspace: { id: string }) => workspace.id))
-      setActiveWorkspace(workspaceId)
-      await fetchChannels(workspaceId)
-      setShowWorkspaceSelection(false)
+      
+      // Clear the joining state
       setJoiningWorkspaceName(null)
+      
+      addLog(`Successfully joined workspace ${workspaceId}`)
+      return updatedWorkspaces
     } catch (error) {
       logger.error('Error joining workspace:', error)
       setError('Failed to join workspace. Please try again.')
+      throw error
     }
   }
 
-  const handleWorkspaceSelect = (workspaceId: string) => {
-    setActiveWorkspace(workspaceId)
-    fetchChannels(workspaceId)
-    setShowWorkspaceSelection(false)
+  const handleWorkspaceSelect = async (workspaceId: string) => {
+    if (!workspaceId) {
+      logger.error('No workspace ID provided to handleWorkspaceSelect')
+      return
+    }
+
+    if (!user?.id) {
+      logger.error('No user ID available for workspace selection')
+      return
+    }
+
+    try {
+      logger.log(`Selecting workspace ${workspaceId}`)
+      setActiveWorkspace(workspaceId)
+      
+      // Clear current channel
+      setActiveChannel('')
+      
+      // Fetch channels
+      await fetchChannels(workspaceId)
+      
+      // Hide workspace selection
+      setShowWorkspaceSelection(false)
+      
+      logger.log('Workspace selection complete')
+    } catch (error) {
+      logger.error('Error selecting workspace:', error)
+      setError('Failed to select workspace. Please try again.')
+    }
   }
 
   const toggleDarkMode = () => {
@@ -340,8 +407,18 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut()
-      sessionStorage.removeItem('userEmail')
+      // Clear all Supabase cache
+      await supabase.auth.signOut({ scope: 'global' })
+      
+      // Clear session storage
+      sessionStorage.clear()
+      
+      // Clear local storage items related to Supabase
+      Object.keys(localStorage)
+        .filter(key => key.startsWith('sb-'))
+        .forEach(key => localStorage.removeItem(key))
+
+      // Reset all state
       setUser(null)
       setActiveWorkspace('')
       setActiveChannel('')
@@ -349,10 +426,17 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
       setWorkspaces([])
       setNewWorkspaceName('')
       setError(null)
+      setSuccess(null)
       setShowProfileModal(false)
       setJoiningWorkspaceName(null)
       setShowWorkspaceSelection(false)
       setUserWorkspaceIds([])
+      setUserCount(0)
+      setSearchQuery('')
+      setSearchResults([])
+      setShowSearchResults(false)
+      
+      // Navigate to auth page
       router.push('/auth')
     } catch (error) {
       logger.error('Error signing out:', error)

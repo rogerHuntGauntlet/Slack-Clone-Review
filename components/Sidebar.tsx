@@ -43,11 +43,11 @@ const Sidebar: FC<SidebarProps> = ({
 
   useEffect(() => {
     fetchChannels()
-  }, [activeWorkspace])
+  }, [activeWorkspace, currentUser?.id])
 
   const fetchChannels = async () => {
-    if (activeWorkspace) {
-      const fetchedChannels = await getChannels(activeWorkspace)
+    if (activeWorkspace && currentUser?.id) {
+      const fetchedChannels = await getChannels(activeWorkspace, currentUser.id)
       setChannels(fetchedChannels)
       if (fetchedChannels.length > 0 && !activeChannel) {
         setActiveChannel(fetchedChannels[0].id)

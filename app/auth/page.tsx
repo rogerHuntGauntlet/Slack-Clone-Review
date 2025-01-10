@@ -152,9 +152,15 @@ function AuthContent({ workspaceId }: AuthContentProps) {
       sessionStorage.setItem('userEmail', email)
 
       // Ensure user profile exists
-      const userProfile = await createUserProfile(email)
+      if (!user) throw new Error('No user data after sign in')
+      
+      const userProfile = await createUserProfile({
+        id: user.id,
+        email: user.email
+      })
+      
       console.log('User profile created...', userProfile)
-      if (workspaceId && user) {
+      if (workspaceId && userProfile) {
         await addUserToWorkspace(userProfile.id)
         router.push('/platform')
       }
@@ -185,18 +191,22 @@ function AuthContent({ workspaceId }: AuthContentProps) {
         },
       })
       if (error) throw error
+      if (!user) throw new Error('No user data after sign up')
 
       // Create user profile
-      const udata = await createUserProfile(email)
+      const userProfile = await createUserProfile({
+        id: user.id,
+        email: user.email
+      })
 
-      if (workspaceId && udata) {
+      if (workspaceId && userProfile) {
         setMessage('Profile created. Adding you to workspace...')
-        await addUserToWorkspace(udata.id)
+        await addUserToWorkspace(userProfile.id)
         router.push('/platform')
       }
 
-      setMessage('Profile created. Lets roll!')
-      router.push('/platform')
+      setMessage('Profile created. You will receive an email to verify your account.')
+      //router.push('/platform')
     } catch (error: any) {
       setError(error.message)
     } finally {

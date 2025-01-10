@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { MessageType, FileAttachment } from '../types/database'
 import type { RealtimePostgresChangesPayload } from '@supabase/realtime-js'
 import logger from '@/lib/logger'
+import { createHash } from 'crypto'
 
 interface MessagePayload {
   id: string;
@@ -45,22 +46,25 @@ interface MessageReactionPayload {
 
 console.log('🔧 [Supabase] Starting Supabase initialization...');
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// Create a singleton instance
+let supabaseInstance: any = null;
 
-console.log('🔧 [Supabase] Environment check:', {
-  hasUrl: !!supabaseUrl,
-  hasKey: !!supabaseKey,
-  url: supabaseUrl?.slice(0, 8) + '...',  // Only log the start of the URL for security
-});
+export const getSupabaseClient = () => {
+  if (!supabaseInstance) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ [Supabase] Missing required environment variables!');
-  throw new Error('Missing required environment variables for Supabase configuration');
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('❌ [Supabase] Missing required environment variables!');
+      throw new Error('Missing required environment variables for Supabase configuration');
+    }
+
+    supabaseInstance = createClient(supabaseUrl, supabaseKey);
+  }
+  return supabaseInstance;
 }
 
-console.log('✅ [Supabase] Creating Supabase client...');
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = getSupabaseClient();
 
 export const testSupabaseConnection = async () => {
   try {
@@ -464,50 +468,46 @@ export const testDatabaseTables = async () => {
   }
 }
 
-export const getWorkspaces = async () => {
-  console.log('🏢 [getWorkspaces] Starting to fetch workspaces...');
+export const getWorkspaces = async (userId?: string) => {
   try {
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    if (authError || !session) {
-      console.error('❌ [getWorkspaces] Auth error:', authError);
-      return [];
+    logger.log('🏢 [getWorkspaces] Starting to fetch workspaces...')
+    
+    // If userId is provided, get only their workspaces
+    if (userId) {
+      const { data, error } = await supabase
+        .from('workspace_members')
+        .select(`
+          workspace_id,
+          workspaces (
+            id,
+            name
+          ),
+          role
+        `)
+        .eq('user_id', userId)
+
+      if (error) {
+        logger.error('❌ [getWorkspaces] Database error:', error)
+        throw error
+      }
+
+      const workspaces = data.map((item: any) => ({
+        id: item.workspaces.id,
+        name: item.workspaces.name,
+        role: item.role,
+      }))
+
+      logger.log(`✅ [getWorkspaces] Fetched ${workspaces.length} workspaces for user`)
+      return workspaces
     }
-
-    console.log('👤 [getWorkspaces] Authenticated user:', session.user.id);
-
-    // Get workspace details directly
-    const { data, error } = await supabase
-      .from('workspace_members')
-      .select(`
-        workspace_id,
-        workspaces (
-          id,
-          name
-        ),
-        role
-      `)
-      .eq('user_id', session.user.id);
-
-    if (error) {
-      console.error('❌ [getWorkspaces] Error fetching workspaces:', error);
-      return [];
-    }
-
-    console.log('📋 [getWorkspaces] Raw workspace data:', data);
-
-    const workspaces = data.map((item: any) => ({
-      id: item.workspaces.id,
-      name: item.workspaces.name,
-      role: item.role,
-    }));
-
-    console.log('✅ [getWorkspaces] Processed workspaces:', workspaces);
-    return workspaces;
+    
+    // If no userId, return empty array
+    return []
   } catch (error) {
-    console.error('❌ [getWorkspaces] Error:', error);
-    return [];
+    logger.error('❌ [getWorkspaces] Error:', error)
+    return []
   }
-};
+}
 
 const getAiUser = async () => {
   const { data: aiUser } = await supabase
@@ -612,91 +612,45 @@ const createAiWelcomeDm = async (workspaceName: string, creatorId: string, aiUse
     });
 };
 
-export const createWorkspace = async (name: string) => {
-  console.log('🏗️ [createWorkspace] Starting workspace creation:', { name });
+export const createWorkspace = async (name: string, userId?: string) => {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      console.error('❌ [createWorkspace] Not authenticated');
-      throw new Error('Not authenticated');
-    }
-    console.log('👤 [createWorkspace] User authenticated:', session.user.id);
+    logger.log('🏗️ [createWorkspace] Starting workspace creation:', { name })
 
-    // Get or create AI user profile
-    const AI_USER_ID = '00000000-0000-0000-0000-000000000000';
-    console.log('🤖 [createWorkspace] Looking for AI user...');
-
-    let { data: aiUser } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('email', 'ai.assistant@chatgenius.ai')
-      .single();
-
-    if (!aiUser) {
-      console.log('🤖 [createWorkspace] AI user not found, creating...');
-      const { data: newAiUser, error: aiError } = await supabase
-        .from('user_profiles')
-        .insert({
-          id: AI_USER_ID,
-          email: 'ai.assistant@chatgenius.ai',
-          username: 'AI Assistant',
-          status: 'online',
-          avatar_url: '/ai-assistant-avatar.png'
-        })
-        .select()
-        .single();
-
-      if (aiError) {
-        console.error('❌ [createWorkspace] Error creating AI user:', aiError);
-        throw aiError;
-      }
-      aiUser = newAiUser;
-      console.log('✅ [createWorkspace] AI user created:', aiUser);
+    if (!userId) {
+      throw new Error('User ID is required to create a workspace')
     }
 
     // Create the workspace
-    console.log('🏢 [createWorkspace] Creating workspace...');
     const { data: workspace, error: workspaceError } = await supabase
       .from('workspaces')
       .insert({
-        name,
-        created_by: session.user.id
+        name
       })
       .select()
-      .single();
+      .single()
 
     if (workspaceError) {
-      console.error('❌ [createWorkspace] Error creating workspace:', workspaceError);
-      throw workspaceError;
+      logger.error('❌ [createWorkspace] Error creating workspace:', workspaceError)
+      throw workspaceError
     }
-    console.log('✅ [createWorkspace] Workspace created:', workspace);
+    logger.log('✅ [createWorkspace] Workspace created:', workspace)
 
-    // Add the creator as admin
-    console.log('👑 [createWorkspace] Adding creator as admin...');
+    // Add user as admin
     const { error: memberError } = await supabase
       .from('workspace_members')
       .insert({
         workspace_id: workspace.id,
-        user_id: session.user.id,
+        user_id: userId,
         role: 'admin'
-      });
+      })
 
     if (memberError) {
-      console.error('❌ [createWorkspace] Error adding creator as admin:', memberError);
-      throw memberError;
+      logger.error('Failed to add user as admin:', memberError)
+      throw memberError
     }
 
-    // Add AI user to workspace
-    await supabase
-      .from('workspace_members')
-      .insert({
-        workspace_id: workspace.id,
-        user_id: aiUser.id,
-        role: 'member'
-      });
-
-    // Create default channels
-    const channels = [];
+    // Create default channels with created_by
+    const channels = []
     
     // Create general channel
     const { data: generalChannel, error: generalError } = await supabase
@@ -704,65 +658,16 @@ export const createWorkspace = async (name: string) => {
       .insert({
         name: 'general',
         workspace_id: workspace.id,
-        created_by: session.user.id
+        created_by: userId
       })
       .select()
-      .single();
-    
-    if (generalError || !generalChannel) throw new Error('Failed to create general channel');
-    channels.push(generalChannel);
-    
-    // Add creator to general channel members
-    const { error: generalMemberError } = await supabase
-      .from('channel_members')
-      .insert({
-        channel_id: generalChannel.id,
-        user_id: session.user.id,
-        role: 'admin'
-      });
+      .single()
 
-    if (generalMemberError) throw new Error('Failed to add creator to general channel');
-
-    // Add AI to general channel members
-    const { error: generalAiMemberError } = await supabase
-      .from('channel_members')
-      .insert({
-        channel_id: generalChannel.id,
-        user_id: aiUser.id,
-        role: 'member'
-      });
-
-    if (generalAiMemberError) throw new Error('Failed to add AI to general channel');
-
-    // Create intro message for general
-    const { data: generalIntro, error: generalIntroError } = await supabase
-      .from('messages')
-      .insert({
-        content: '👋 Welcome to the general channel! This is the central hub where we can discuss everything about the workspace. You can ask questions, share updates, brainstorm ideas, and collaborate with your team. Feel free to use @mentions to get someone\'s attention, share files and images, or react with emojis to messages. I\'m here to help facilitate discussions and provide assistance - just mention me in your message and I\'ll jump in! Let\'s make this a vibrant space for productive conversations and team bonding.',
-        channel_id: generalChannel.id,
-        user_id: session.user.id,
-        file_attachments: null
-      })
-      .select()
-      .single();
-
-    if (generalIntroError || !generalIntro) throw new Error('Failed to create general intro message');
-
-    // Create AI welcome reply
-    const { error: aiReplyError } = await supabase
-      .from('messages')
-      .insert({
-        content: 'Hello! I\'m your AI assistant. I\'ll be here to help you with anything you need!',
-        channel_id: generalChannel.id,
-        user_id: aiUser.id,
-        parent_id: generalIntro.id,
-        file_attachments: null
-      });
-
-    if (aiReplyError) {
-      console.error('Failed to create AI welcome reply:', aiReplyError);
-      throw aiReplyError;
+    if (generalError) {
+      logger.error('Failed to create general channel:', generalError)
+      throw generalError
     }
+    channels.push(generalChannel)
 
     // Create social channel
     const { data: socialChannel, error: socialError } = await supabase
@@ -770,65 +675,16 @@ export const createWorkspace = async (name: string) => {
       .insert({
         name: 'social',
         workspace_id: workspace.id,
-        created_by: session.user.id
+        created_by: userId
       })
       .select()
-      .single();
+      .single()
 
     if (socialError) {
-      console.error('Failed to create social channel:', socialError);
-      throw socialError;
+      logger.error('Failed to create social channel:', socialError)
+      throw socialError
     }
-    channels.push(socialChannel);
-
-    // Add creator to social channel members
-    const { error: socialMemberError } = await supabase
-      .from('channel_members')
-      .insert({
-        channel_id: socialChannel.id,
-        user_id: session.user.id,
-        role: 'admin'
-      });
-
-    if (socialMemberError) throw new Error('Failed to add creator to social channel');
-
-    // Add AI to social channel members
-    const { error: socialAiMemberError } = await supabase
-      .from('channel_members')
-      .insert({
-        channel_id: socialChannel.id,
-        user_id: aiUser.id,
-        role: 'member'
-      });
-
-    if (socialAiMemberError) throw new Error('Failed to add AI to social channel');
-
-    // Create intro message for social
-    const { data: socialIntro, error: socialIntroError } = await supabase
-      .from('messages')
-      .insert({
-        content: 'Welcome to the social channel! 🎉 This is a space for casual conversations, team bonding, and fun discussions outside of work. Feel free to share interesting articles, memes, hobbies, weekend plans, or start conversations about anything that interests you. Building connections with your teammates is important for creating a positive work culture. Remember to keep things respectful and inclusive - we want everyone to feel comfortable participating. Looking forward to getting to know each other better! 💬',
-        channel_id: socialChannel.id,
-        user_id: session.user.id,
-        file_attachments: null
-      })
-      .select()
-      .single();
-
-    if (socialIntroError || !socialIntro) throw new Error('Failed to create social intro message');
-
-    // Create AI welcome reply for social
-    const { error: aiSocialReplyError } = await supabase
-      .from('messages')
-      .insert({
-        content: 'Looking forward to some fun conversations!',
-        channel_id: socialChannel.id,
-        user_id: aiUser.id,
-        parent_id: socialIntro.id,
-        file_attachments: null
-      });
-
-    if (aiSocialReplyError) throw new Error('Failed to create AI social welcome reply');
+    channels.push(socialChannel)
 
     // Create work channel
     const { data: workChannel, error: workError } = await supabase
@@ -836,100 +692,45 @@ export const createWorkspace = async (name: string) => {
       .insert({
         name: 'work',
         workspace_id: workspace.id,
-        created_by: session.user.id
+        created_by: userId
       })
       .select()
-      .single();
+      .single()
 
-    if (workError || !workChannel) throw new Error('Failed to create work channel');
-    channels.push(workChannel);
+    if (workError) {
+      logger.error('Failed to create work channel:', workError)
+      throw workError
+    }
+    channels.push(workChannel)
 
-    // Add creator to work channel members
-    const { error: workMemberError } = await supabase
-      .from('channel_members')
-      .insert({
-        channel_id: workChannel.id,
-        user_id: session.user.id,
-        role: 'admin'
-      });
-
-    if (workMemberError) throw new Error('Failed to add creator to work channel');
-
-    // Add AI to work channel members
-    const { error: workAiMemberError } = await supabase
-      .from('channel_members')
-      .insert({
-        channel_id: workChannel.id,
-        user_id: aiUser.id,
-        role: 'member'
-      });
-
-    if (workAiMemberError) throw new Error('Failed to add AI to work channel');
-
-    // Create intro message for work
-    const { data: workIntro, error: workIntroError } = await supabase
-      .from('messages')
-      .insert({
-        content: 'Welcome to the work channel! 🏢 This is where we discuss work-related topics, projects, tasks, and collaborate with your team. You can use this channel to share project updates, coordinate on deliverables, ask work-related questions, and keep track of important milestones. Feel free to create threads for specific topics or projects to keep discussions organized. Remember to use reactions to acknowledge updates and keep communication efficient. Let\'s build something great together! 💪',
-        channel_id: workChannel.id,
-        user_id: session.user.id,
-        file_attachments: null
-      })
-      .select()
-      .single();
-
-    if (workIntroError || !workIntro) throw new Error('Failed to create work intro message');
-
-    // Create AI welcome reply for work
-    const { error: aiWorkReplyError } = await supabase
-      .from('messages')
-      .insert({
-        content: 'I\'ll be here to help with any work-related questions!',
-        channel_id: workChannel.id,
-        user_id: aiUser.id,
-        parent_id: workIntro.id,
-        file_attachments: null
-      });
-
-    if (aiWorkReplyError) throw new Error('Failed to create AI work welcome reply');
-
-    // Create welcome DM from AI
-    const { error: welcomeDmError } = await supabase
-      .from('direct_messages')
-      .insert({
-        content: `Welcome to your new workspace "${name}"! I'm your AI assistant. Feel free to ask me anything!`,
-        sender_id: aiUser.id,
-        receiver_id: session.user.id,
-        file_attachments: null
-      });
-
-    if (welcomeDmError) throw new Error('Failed to create welcome DM');
-
-    console.log('✅ [createWorkspace] Workspace setup completed successfully');
+    logger.log('✅ [createWorkspace] Workspace setup completed successfully')
     return {
       workspace,
       channels
-    };
+    }
 
   } catch (error) {
-    console.error('❌ [createWorkspace] Error:', error);
-    throw error;
+    logger.error('❌ [createWorkspace] Error:', error)
+    throw error
   }
-};
+}
 
-export const joinWorkspace = async (workspaceId: string) => {
+export const joinWorkspace = async (workspaceId: string, userId: string) => {
   try {
     const { error } = await supabase
-      .rpc('join_workspace', {
-        workspace_id: workspaceId
-      });
+      .from('workspace_members')
+      .insert({
+        workspace_id: workspaceId,
+        user_id: userId,
+        role: 'member'
+      })
 
-    if (error) throw error;
+    if (error) throw error
   } catch (error) {
-    console.error('Error joining workspace:', error);
-    throw error;
+    logger.error('Error joining workspace:', error)
+    throw error
   }
-};
+}
 
 export const getUserByEmail = async (email: string) => {
   try {
@@ -937,15 +738,15 @@ export const getUserByEmail = async (email: string) => {
       .from('user_profiles')
       .select('*')
       .eq('email', email)
-      .single();
+      .single()
 
-    if (error) throw error;
-    return data;
+    if (error) throw error
+    return data
   } catch (error) {
-    console.error('Error fetching user:', error);
-    return null;
+    logger.error('Error fetching user:', error)
+    return null
   }
-};
+}
 
 export const updateUserProfileId = async (oldEmail: string, newId: string) => {
   try {
@@ -986,52 +787,63 @@ export const updateUserProfileId = async (oldEmail: string, newId: string) => {
   }
 };
 
-export const createUserProfile = async (email: string) => {
+const md5 = (str: string) => createHash('md5').update(str).digest('hex');
+
+export const createUserProfile = async (user: { id: string; email?: string }) => {
   try {
-    // Get the current session to use the auth user ID
-    const { data: { session } } = await supabase.auth.getSession();
-
-    const { data: existingProfile, error: fetchError } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('email', email)
-      .single();
-
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      console.error('Error checking existing profile:', fetchError);
-      throw fetchError;
+    if (!user.id) {
+      throw new Error('User ID is required to create a profile');
     }
 
+    // First check if profile exists
+    const { data: existingProfile } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
     if (existingProfile) {
-      console.log('Profile already exists:', existingProfile);
       return existingProfile;
+    }
+
+    // Get user data from auth if email is not provided
+    let email: string;
+    if (!user.email) {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser?.email) {
+        throw new Error('Unable to get user email from auth');
+      }
+      email = authUser.email;
+    } else {
+      email = user.email;
     }
 
     // Extract username from email
     const username = email.split('@')[0];
 
-    // Use the auth user ID if available
-    const profileData = {
-      ...(session?.user?.id ? { id: session.user.id } : {}),
-      email,
-      username,
-      status: 'online'
-    };
-
-    console.log('Creating profile with data:', profileData);
-
+    // Create new profile
     const { data: newProfile, error: insertError } = await supabase
       .from('user_profiles')
-      .insert([profileData])
+      .insert([{
+        id: user.id,
+        email,
+        username,
+        status: 'online',
+        avatar_url: `https://www.gravatar.com/avatar/${md5(email.toLowerCase())}?d=mp`
+      }])
       .select()
       .single();
 
     if (insertError) {
-      console.error('Error creating profile:', insertError);
+      console.error('Error creating user profile:', insertError);
       throw insertError;
     }
 
-    console.log('Created new profile:', newProfile);
+    if (!newProfile) {
+      throw new Error('Failed to create user profile');
+    }
+
+    console.log('Created new user profile:', newProfile);
     return newProfile;
   } catch (error) {
     console.error('Error in createUserProfile:', error);
@@ -1039,47 +851,55 @@ export const createUserProfile = async (email: string) => {
   }
 };
 
-export const getChannels = async (workspaceId: string) => {
-  console.log('Fetching channels for workspace:', workspaceId)
+export const getChannels = async (workspaceId: string, userId: string) => {
   try {
-    const isAuthed = await checkAuth()
-    if (!isAuthed) {
-      throw new Error('Not authenticated')
+    logger.log(`Getting channels for workspace ${workspaceId} and user ${userId}`)
+
+    if (!workspaceId || !userId) {
+      logger.error('Missing required parameters:', { workspaceId, userId })
+      return [] // Return empty array instead of throwing
     }
 
     // First verify workspace access
-    const { data: workspaceAccess, error: workspaceError } = await supabase
+    const { data: members, error: memberError } = await supabase
       .from('workspace_members')
-      .select('workspace_id')
+      .select('role')
       .eq('workspace_id', workspaceId)
-      .limit(1);
+      .eq('user_id', userId)
+      .single()
 
-    if (workspaceError || !workspaceAccess?.length) {
-      console.error('Workspace access error:', workspaceError)
-      throw workspaceError || new Error('No workspace access')
+    if (memberError) {
+      if (memberError.code === 'PGRST116') { // No rows returned
+        logger.log('User is not a member of this workspace:', { userId, workspaceId })
+        return [] // Return empty array for non-members
+      }
+      logger.error('Error checking workspace membership:', memberError)
+      throw memberError
     }
 
     // Then fetch channels
     const { data: channels, error: channelsError } = await supabase
       .from('channels')
-      .select('*')
+      .select(`
+        id,
+        name,
+        workspace_id,
+        created_by,
+        created_at
+      `)
       .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: true })
 
     if (channelsError) {
-      console.error('Channels fetch error:', {
-        code: channelsError.code,
-        message: channelsError.message,
-        details: channelsError.details,
-        hint: channelsError.hint
-      })
+      logger.error('Error fetching channels:', channelsError)
       throw channelsError
     }
 
-    console.log('Successfully fetched channels:', channels?.length)
+    logger.log(`Successfully fetched ${channels?.length || 0} channels`)
     return channels || []
   } catch (error) {
-    console.error('Error in getChannels:', error)
-    throw error
+    logger.error('Error in getChannels:', error)
+    return [] // Return empty array on error
   }
 }
 
