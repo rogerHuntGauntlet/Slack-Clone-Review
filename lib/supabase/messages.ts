@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import type { MessageWithRelations } from '../../types/database';
+//import type { MessageWithRelations } from '../../types/database';
 
 export async function toggleReaction(messageId: string, userId: string, reaction: string) {
   const { data: existingReaction } = await supabase

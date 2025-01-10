@@ -35,7 +35,7 @@ const ProfileModal: FC<ProfileModalProps> = ({ currentUser, onClose }) => {
 
   const fetchProfile = async () => {
     const { data, error } = await supabase
-      .from('users')
+      .from('user_profiles')
       .select('username, avatar_url, phone, bio, employer')
       .eq('id', currentUser.id)
       .single()
@@ -61,13 +61,28 @@ const ProfileModal: FC<ProfileModalProps> = ({ currentUser, onClose }) => {
 
   const startCamera = async () => {
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true })
-      setStream(mediaStream)
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'user',
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        } 
+      });
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+          if (videoRef.current) {
+            videoRef.current.onloadedmetadata = resolve;
+          }
+        });
+      }
     } catch (error) {
-      console.error('Error accessing camera:', error)
-      setError('Failed to access camera. Please check your permissions.')
+      console.error('Error accessing camera:', error);
+      setError('Failed to access camera. Please check your permissions.');
     }
-  }
+  };
 
   const stopCamera = () => {
     if (stream) {
@@ -77,20 +92,28 @@ const ProfileModal: FC<ProfileModalProps> = ({ currentUser, onClose }) => {
   }
 
   const takePhoto = () => {
-    if (stream && videoRef.current) {
-      const canvas = document.createElement('canvas')
-      canvas.width = videoRef.current.videoWidth
-      canvas.height = videoRef.current.videoHeight
-      canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0)
-      canvas.toBlob(blob => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      const video = videoRef.current;
+      
+      // Set canvas dimensions to match video
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      // Draw the video frame to the canvas
+      context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Convert the canvas to a blob
+      canvas.toBlob((blob) => {
         if (blob) {
-          const file = new File([blob], 'camera_photo.jpg', { type: 'image/jpeg' })
-          setAvatarFile(file)
+          const file = new File([blob], 'camera_photo.jpg', { type: 'image/jpeg' });
+          setAvatarFile(file);
+          stopCamera();
         }
-      }, 'image/jpeg')
-      stopCamera()
+      }, 'image/jpeg', 0.8);
     }
-  }
+  };
 
   const uploadAvatar = async (file: File) => {
     try {
@@ -127,8 +150,15 @@ const ProfileModal: FC<ProfileModalProps> = ({ currentUser, onClose }) => {
       }
 
       const { error } = await supabase
-        .from('users')
-        .update({ username: profile.username, avatar_url, phone: profile.phone, bio: profile.bio, employer: profile.employer })
+        .from('user_profiles')
+        .update({ 
+          username: profile.username, 
+          avatar_url, 
+          phone: profile.phone, 
+          bio: profile.bio, 
+          employer: profile.employer,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', currentUser.id)
 
       if (error) throw error
@@ -202,15 +232,32 @@ const ProfileModal: FC<ProfileModalProps> = ({ currentUser, onClose }) => {
             </div>
 
             {stream && (
-              <div className="relative">
-                <video ref={videoRef} autoPlay className="w-40 h-40 rounded-lg border-2 border-blue-500" />
-                <button
-                  type="button"
-                  onClick={takePhoto}
-                  className="absolute bottom-2 right-2 p-2 bg-blue-500 text-white rounded-full shadow-lg hover:bg-blue-600 transition-colors"
-                >
-                  <Camera size={18} />
-                </button>
+              <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000]">
+                <div className="relative bg-gray-800 p-4 rounded-lg">
+                  <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    playsInline
+                    muted
+                    className="rounded-lg max-w-full max-h-[80vh] mirror-mode"
+                  />
+                  <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-4">
+                    <button
+                      type="button"
+                      onClick={takePhoto}
+                      className="p-3 bg-blue-500 text-white rounded-full shadow-lg hover:bg-blue-600 transition-colors"
+                    >
+                      <Camera size={24} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={stopCamera}
+                      className="p-3 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors"
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -294,6 +341,12 @@ const ProfileModal: FC<ProfileModalProps> = ({ currentUser, onClose }) => {
           </div>
         </form>
       </div>
+
+      <style jsx global>{`
+        .mirror-mode {
+          transform: scaleX(-1);
+        }
+      `}</style>
     </div>
   )
 }

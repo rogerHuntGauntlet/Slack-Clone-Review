@@ -6,6 +6,7 @@ export interface MessageType {
   parent_id: string | null;
   created_at: string;
   updated_at: string;
+  is_edited?: boolean;
   file_attachments: FileAttachment[] | null;
   user?: {
     id: string;

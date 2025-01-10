@@ -703,7 +703,7 @@ export const createWorkspace = async (name: string) => {
     const { data: generalIntro, error: generalIntroError } = await supabase
       .from('messages')
       .insert({
-        content: 'Welcome to the general channel! This is where we discuss everything about the workspace.',
+        content: '👋 Welcome to the general channel! This is the central hub where we can discuss everything about the workspace. You can ask questions, share updates, brainstorm ideas, and collaborate with your team. Feel free to use @mentions to get someone\'s attention, share files and images, or react with emojis to messages. I\'m here to help facilitate discussions and provide assistance - just mention me in your message and I\'ll jump in! Let\'s make this a vibrant space for productive conversations and team bonding.',
         channel_id: generalChannel.id,
         user_id: session.user.id,
         file_attachments: null
@@ -772,7 +772,7 @@ export const createWorkspace = async (name: string) => {
     const { data: socialIntro, error: socialIntroError } = await supabase
       .from('messages')
       .insert({
-        content: 'Welcome to the social channel! This is where we can chat about non-work topics and have fun discussions.',
+        content: 'Welcome to the social channel! 🎉 This is a space for casual conversations, team bonding, and fun discussions outside of work. Feel free to share interesting articles, memes, hobbies, weekend plans, or start conversations about anything that interests you. Building connections with your teammates is important for creating a positive work culture. Remember to keep things respectful and inclusive - we want everyone to feel comfortable participating. Looking forward to getting to know each other better! 💬',
         channel_id: socialChannel.id,
         user_id: session.user.id,
         file_attachments: null
@@ -835,7 +835,7 @@ export const createWorkspace = async (name: string) => {
     const { data: workIntro, error: workIntroError } = await supabase
       .from('messages')
       .insert({
-        content: 'Welcome to the work channel! This is where we discuss work-related topics and projects.',
+        content: 'Welcome to the work channel! 🏢 This is where we discuss work-related topics, projects, tasks, and collaborate with your team. You can use this channel to share project updates, coordinate on deliverables, ask work-related questions, and keep track of important milestones. Feel free to create threads for specific topics or projects to keep discussions organized. Remember to use reactions to acknowledge updates and keep communication efficient. Let\'s build something great together! 💪',
         channel_id: workChannel.id,
         user_id: session.user.id,
         file_attachments: null

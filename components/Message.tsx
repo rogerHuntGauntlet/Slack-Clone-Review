@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import { MessageSquare, Share2, Smile, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { MessageSquare, Share2, Smile, FileText, ChevronDown, ChevronUp, MoreVertical, Pencil, Trash2, X, Check } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import type { MessageType } from '../types/database';
 import { supabase } from '../lib/supabase';
@@ -27,7 +27,13 @@ const Message: React.FC<MessageProps> = ({
   const [replies, setReplies] = useState<MessageType[]>([]);
   const [isLoadingReplies, setIsLoadingReplies] = useState(false);
   const [showReplies, setShowReplies] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedContent, setEditedContent] = useState(message.content || '');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const reactionPickerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if ((message.reply_count ?? 0) > 0 && (showReplies || isThreadView)) {
@@ -35,16 +41,67 @@ const Message: React.FC<MessageProps> = ({
     }
   }, [message.id, showReplies, isThreadView]);
 
+  // Add realtime subscription for message updates
+  useEffect(() => {
+    const channel = supabase
+      .channel(`message-${message.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `id=eq.${message.id}`
+        },
+        (payload: {
+          eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+          new: MessageType;
+          old: MessageType;
+        }) => {
+          if (payload.eventType === 'UPDATE') {
+            // Update the message content in the UI
+            setEditedContent(payload.new.content);
+            if (!isEditing) {
+              message.content = payload.new.content;
+              message.is_edited = payload.new.is_edited;
+              message.updated_at = payload.new.updated_at;
+            }
+          } else if (payload.eventType === 'DELETE') {
+            // Hide the message in the UI
+            const messageElement = document.getElementById(`message-${message.id}`);
+            if (messageElement) {
+              messageElement.style.display = 'none';
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [message.id]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (reactionPickerRef.current && !reactionPickerRef.current.contains(event.target as Node)) {
         setShowReactionPicker(false);
+      }
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (isEditing && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.setSelectionRange(editInputRef.current.value.length, editInputRef.current.value.length);
+    }
+  }, [isEditing]);
 
   const loadReplies = async () => {
     setIsLoadingReplies(true);
@@ -93,6 +150,62 @@ const Message: React.FC<MessageProps> = ({
     }
   };
 
+  const handleEdit = async () => {
+    if (!editedContent.trim()) return;
+    
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .update({ 
+          content: editedContent.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', message.id);
+
+      if (error) throw error;
+      
+      setIsEditing(false);
+      setShowMenu(false);
+      toast.success('Message updated');
+    } catch (error) {
+      console.error('Error updating message:', error);
+      toast.error('Failed to update message');
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .eq('id', message.id)
+        .eq('user_id', currentUser.id);
+
+      if (error) throw error;
+      
+      const messageElement = document.getElementById(`message-${message.id}`);
+      if (messageElement) {
+        messageElement.style.display = 'none';
+      }
+      
+      setShowDeleteConfirm(false);
+      toast.success('Message deleted');
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      toast.error('Failed to delete message');
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleEdit();
+    } else if (e.key === 'Escape') {
+      setIsEditing(false);
+      setEditedContent(message.content || '');
+    }
+  };
+
   if (!message || !message.id) {
     console.error('Invalid message data:', message);
     return null;
@@ -122,16 +235,86 @@ const Message: React.FC<MessageProps> = ({
         </div>
         
         <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2 min-w-0">
+          <div className="flex items-baseline gap-2 min-w-0 group">
             <span className="font-semibold truncate">{message.user?.username || 'Unknown User'}</span>
             <span className="text-xs text-gray-500 flex-shrink-0">
               {message.created_at ? new Date(message.created_at).toLocaleString() : ''}
+              {message.updated_at && message.updated_at !== message.created_at && (
+                <span className="ml-1 text-gray-400">(edited)</span>
+              )}
             </span>
+            {message.user_id === currentUser.id && (
+              <div className="relative ml-auto opacity-40 group-hover:opacity-100 transition-opacity" ref={menuRef}>
+                <button
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="p-1.5 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                >
+                  <MoreVertical size={14} />
+                </button>
+                {showMenu && (
+                  <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+                    <button
+                      onClick={() => {
+                        setIsEditing(true);
+                        setShowMenu(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <Pencil size={14} />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDeleteConfirm(true);
+                        setShowMenu(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <Trash2 size={14} />
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <p className="mt-1 text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
-            {message.content || ''}
-          </p>
+          {isEditing ? (
+            <div className="mt-1">
+              <textarea
+                ref={editInputRef}
+                value={editedContent}
+                onChange={(e) => setEditedContent(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow resize-none"
+                rows={3}
+              />
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  onClick={handleEdit}
+                  disabled={!editedContent.trim()}
+                  className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Check size={14} />
+                  Save
+                </button>
+                <button
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditedContent(message.content || '');
+                  }}
+                  className="flex items-center gap-1 px-3 py-1 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                >
+                  <X size={14} />
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-1 text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
+              {message.content || ''}
+            </p>
+          )}
 
           {message.file_attachments && message.file_attachments.length > 0 && (
             <div className="mt-2 space-y-2">
@@ -288,6 +471,34 @@ const Message: React.FC<MessageProps> = ({
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              Delete Message
+            </h3>
+            <p className="text-gray-600 dark:text-gray-300 mb-4">
+              Are you sure you want to delete this message? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
