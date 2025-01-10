@@ -464,7 +464,7 @@ function PlatformContent() {
             workspaces={workspaces}
           />
           <div className="flex-1 flex bg-white dark:bg-gray-800/80 rounded-tl-2xl shadow-xl overflow-hidden">
-            <div className={`flex-1 flex min-w-0 transition-all duration-300`}>
+            <div className={`flex-1 flex min-w-0 max-w-full transition-all duration-300`}>
               <style jsx global>{`
                 * {
                   scrollbar-width: thin;
@@ -533,13 +533,9 @@ function PlatformContent() {
             </div>
 
             {/* Activity Feed */}
-            {activeWorkspace && !activeDM && !isChatExpanded && (
+            {activeWorkspace && !activeDM && (
               <ActivityFeed onCollapse={(isCollapsed) => {
-                // This will trigger a re-render of the chat area
-                const chatArea = document.querySelector('.chat-area-container');
-                if (chatArea) {
-                  chatArea.classList.toggle('expanded', isCollapsed);
-                }
+                setIsChatExpanded(isCollapsed);
               }} />
             )}
           </div>

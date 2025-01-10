@@ -463,11 +463,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-w-0 max-w-full">
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col h-full min-w-0">
+      <div className="flex-1 flex flex-col h-full min-w-0 max-w-full">
         <div 
-          className="flex-1 overflow-y-auto p-4" 
+          className="flex-1 overflow-y-auto p-4 min-w-0" 
           ref={mainChatRef}
           onScroll={handleScroll}
         >
@@ -476,7 +476,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white"></div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               {messages.map((message) => (
                 <Message
                   key={message.id}
@@ -491,7 +491,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         </div>
 
         {/* Message Input */}
-        <div className="px-4 pb-4 pt-2">
+        <div className="px-4 pb-4 pt-2 min-w-0">
           <form onSubmit={(e) => handleSubmit(e, false)} className="flex flex-col gap-2">
             <div className="flex items-center gap-2 border dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-600 transition-colors">
               <label className={`cursor-pointer p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-l ${isUploading ? 'animate-pulse' : ''}`}>

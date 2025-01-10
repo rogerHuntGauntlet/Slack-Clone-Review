@@ -75,12 +75,79 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse }) => 
   }
 
   return (
-    <div className={`relative flex-shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0' : 'w-80'}`}>
-      {/* Main Feed Content */}
-      <div className={`absolute right-0 top-0 h-full bg-gray-800 text-white flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0 overflow-hidden' : 'w-full'}`}>
-        <div className="flex items-center p-4 justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 p-0.5 flex-shrink-0">
+    <>
+      <div className={`relative flex-shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0' : 'w-80'}`}>
+        {/* Main Feed Content */}
+        <div className={`absolute right-0 top-0 h-full bg-gray-800 text-white flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0 overflow-hidden' : 'w-full'}`}>
+          <div className="flex items-center p-4 justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 p-0.5 flex-shrink-0">
+                <div className="w-full h-full rounded-full overflow-hidden bg-gray-800 flex items-center justify-center">
+                  <img
+                    src="https://media.tenor.com/NeaT_0PBOzQAAAAM/robot-reaction-eww.gif"
+                    alt="AI Assistant"
+                    className="w-7 h-7 rounded-full"
+                  />
+                </div>
+              </div>
+              <span className="font-semibold">AI Feed</span>
+            </div>
+            <button 
+              className="w-6 h-6 flex items-center justify-center bg-gray-700 rounded-full hover:bg-gray-600 transition-colors"
+              onClick={handleCollapse}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          <div className="flex items-center px-4 py-2 border-b border-gray-700">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                togglePause()
+              }}
+              className="flex items-center space-x-2 text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              {isPaused ? (
+                <>
+                  <PlayCircle size={16} />
+                  <span>Resume Feed</span>
+                </>
+              ) : (
+                <>
+                  <PauseCircle size={16} />
+                  <span>Pause Feed</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="flex-grow overflow-y-auto">
+            <div className="space-y-2 p-2">
+              {messages.map(message => (
+                <div key={message.id} className="bg-gray-700 rounded-lg p-2">
+                  <p className="text-sm text-gray-300">{message.content}</p>
+                  <p className="text-xs text-gray-400 mt-1">{formatTime(message.timestamp)}</p>
+                </div>
+              ))}
+              {messages.length === 0 && (
+                <div className="text-sm text-gray-400 text-center p-4">
+                  Waiting for activity updates...
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Floating Tab - Now outside the collapsible area */}
+      {isCollapsed && (
+        <div 
+          className="fixed right-0 top-[4.5rem] cursor-pointer transform transition-transform duration-300 hover:-translate-x-1 z-50"
+          onClick={handleCollapse}
+        >
+          <div className="bg-gray-800 text-white p-2.5 rounded-l-xl shadow-lg flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 p-0.5">
               <div className="w-full h-full rounded-full overflow-hidden bg-gray-800 flex items-center justify-center">
                 <img
                   src="https://media.tenor.com/NeaT_0PBOzQAAAAM/robot-reaction-eww.gif"
@@ -89,75 +156,11 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse }) => 
                 />
               </div>
             </div>
-            <span className="font-semibold">AI Feed</span>
-          </div>
-          <button 
-            className="w-6 h-6 flex items-center justify-center bg-gray-700 rounded-full hover:bg-gray-600 transition-colors"
-            onClick={handleCollapse}
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-
-        <div className="flex items-center px-4 py-2 border-b border-gray-700">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              togglePause()
-            }}
-            className="flex items-center space-x-2 text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            {isPaused ? (
-              <>
-                <PlayCircle size={16} />
-                <span>Resume Feed</span>
-              </>
-            ) : (
-              <>
-                <PauseCircle size={16} />
-                <span>Pause Feed</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        <div className="flex-grow overflow-y-auto">
-          <div className="space-y-2 p-2">
-            {messages.map(message => (
-              <div key={message.id} className="bg-gray-700 rounded-lg p-2">
-                <p className="text-sm text-gray-300">{message.content}</p>
-                <p className="text-xs text-gray-400 mt-1">{formatTime(message.timestamp)}</p>
-              </div>
-            ))}
-            {messages.length === 0 && (
-              <div className="text-sm text-gray-400 text-center p-4">
-                Waiting for activity updates...
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Floating Tab when collapsed */}
-      {isCollapsed && (
-        <div 
-          className="absolute right-0 top-1 cursor-pointer transform transition-transform duration-300 hover:-translate-x-1"
-          onClick={handleCollapse}
-        >
-          <div className="bg-gray-800 text-white p-2.5 rounded-l-full shadow-lg flex items-center">
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 p-0.5">
-              <div className="w-full h-full rounded-full overflow-hidden bg-gray-800 flex items-center justify-center">
-                <img
-                  src="https://media.tenor.com/NeaT_0PBOzQAAAAM/robot-reaction-eww.gif"
-                  alt="AI Assistant"
-                  className="w-9 h-9 rounded-full"
-                />
-              </div>
-            </div>
+            <ChevronLeft size={16} className="text-gray-400" />
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 

@@ -106,7 +106,7 @@ const Message: React.FC<MessageProps> = ({
       className={`p-4 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${className}`} 
       id={`message-${message.id}`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-3 min-w-0">
         <div className="flex-shrink-0">
           <div className="relative w-10 h-10">
             <Image
@@ -121,10 +121,10 @@ const Message: React.FC<MessageProps> = ({
           </div>
         </div>
         
-        <div className="flex-grow min-w-0">
-          <div className="flex items-baseline gap-2">
-            <span className="font-semibold">{message.user?.username || 'Unknown User'}</span>
-            <span className="text-xs text-gray-500">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="font-semibold truncate">{message.user?.username || 'Unknown User'}</span>
+            <span className="text-xs text-gray-500 flex-shrink-0">
               {message.created_at ? new Date(message.created_at).toLocaleString() : ''}
             </span>
           </div>
