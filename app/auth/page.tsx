@@ -91,7 +91,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 
   const fetchWorkspaceDetails = async () => {
     if (!workspaceId) return
-    
+
     try {
       const { data, error } = await supabase
         .from('workspaces')
@@ -136,6 +136,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
     setError(null)
 
     try {
+      console.log('Signing in...')
       setMessage('Signing in...')
       const { data: { user }, error } = await supabase.auth.signInWithPassword({
         email,
@@ -148,7 +149,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 
       // Ensure user profile exists
       const userProfile = await createUserProfile(email)
-
+      console.log('User profile created...', userProfile)
       if (workspaceId && user) {
         await addUserToWorkspace(userProfile.id)
         router.push('/platform')
@@ -183,7 +184,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 
       // Create user profile
       const udata = await createUserProfile(email)
-      
+
       if (workspaceId && udata) {
         setMessage('Profile created. Adding you to workspace...')
         await addUserToWorkspace(udata.id)

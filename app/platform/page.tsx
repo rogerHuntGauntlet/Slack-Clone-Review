@@ -70,9 +70,11 @@ function PlatformContent() {
 
   useEffect(() => {
     const checkUser = async () => {
+      console.log('Checking user...')
       setLoading(true)
       try {
         const { data: { session } } = await supabase.auth.getSession()
+        console.log('Session:', session)
         if (session && session.user) {
           let userData = await getUserByEmail(session.user.email)
           if (!userData || userData.id !== session.user.id) {
@@ -110,14 +112,16 @@ function PlatformContent() {
   }, [router, supabase.auth])
 
   const fetchUserData = async () => {
+    console.log('Fetching user data...')
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         throw new Error('No active session')
       }
-      
+      console.log('Session:', session)
       // Try to get or create user profile
       let userProfile = await getUserByEmail(session.user.email)
+      console.log('User profile:', userProfile)
       if (!userProfile) {
         console.log('Creating user profile for:', session.user.email)
         userProfile = await createUserProfile(session.user.email)
@@ -142,6 +146,7 @@ function PlatformContent() {
         setShowWorkspaceSelection(true)
       }
     } catch (error) {
+      console.log('Error fetching user data:', error)
       console.error('Error fetching user data:', error)
       setError('Failed to fetch user data. Please try logging in again.')
     }
