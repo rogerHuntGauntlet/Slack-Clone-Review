@@ -17,6 +17,51 @@ interface WorkspaceListProps {
   onToggleFavorite: (workspaceId: string) => void
 }
 
+const WorkspaceCard: React.FC<{
+  workspace: Workspace
+  onSelect: (id: string) => void
+  onToggleFavorite: (id: string) => void
+  index: number
+}> = ({ workspace, onSelect, onToggleFavorite, index }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: index * 0.05 }}
+    onClick={() => onSelect(workspace.id)}
+    className="group relative bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 hover:shadow-lg dark:hover:shadow-2xl-dark transition-all duration-200 cursor-pointer overflow-hidden"
+  >
+    <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+    
+    <div className="relative z-10 flex items-center justify-between mb-3">
+      <div className="flex items-center space-x-3">
+        <div className="p-2 bg-indigo-500/10 dark:bg-indigo-500/20 rounded-lg">
+          <Folder className="h-5 w-5 text-indigo-500" />
+        </div>
+        <h3 className="font-medium text-gray-900 dark:text-white group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors">
+          {workspace.name}
+        </h3>
+      </div>
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        onClick={(e) => {
+          e.stopPropagation()
+          onToggleFavorite(workspace.id)
+        }}
+        className="relative z-10 p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+      >
+        <Star
+          className={`h-5 w-5 transition-colors ${
+            workspace.isFavorite
+              ? 'text-yellow-400 fill-yellow-400'
+              : 'text-gray-400 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-400'
+          }`}
+        />
+      </motion.button>
+    </div>
+  </motion.div>
+)
+
 const WorkspaceList: React.FC<WorkspaceListProps> = ({
   workspaces,
   onSelectWorkspace,
@@ -196,49 +241,5 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
     </div>
   )
 }
-
-const WorkspaceCard: React.FC<{
-  workspace: Workspace
-  onSelect: (id: string) => void
-  onToggleFavorite: (id: string) => void
-  index: number
-}> = ({ workspace, onSelect, onToggleFavorite, index }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: index * 0.1 }}
-    whileHover={{ scale: 1.01 }}
-    className="group relative bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 p-4 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
-  >
-    <button
-      onClick={() => onSelect(workspace.id)}
-      className="absolute inset-0 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 rounded-lg"
-    />
-    <div className="flex items-center gap-3">
-      <div className="p-2 bg-gradient-to-r from-indigo-500/10 to-pink-500/10 rounded-lg">
-        <Folder size={18} className="text-indigo-500 dark:text-indigo-400" />
-      </div>
-      <h3 className="text-sm font-medium text-gray-900 dark:text-white flex-1 truncate">{workspace.name}</h3>
-      <motion.button
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-        onClick={(e) => {
-          e.stopPropagation()
-          onToggleFavorite(workspace.id)
-        }}
-        className="relative z-10 p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
-      >
-        <Star
-          size={16}
-          className={`${
-            workspace.isFavorite
-              ? 'fill-yellow-400 text-yellow-400'
-              : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400'
-          } transition-colors`}
-        />
-      </motion.button>
-    </div>
-  </motion.div>
-)
 
 export default WorkspaceList

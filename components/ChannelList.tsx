@@ -1,5 +1,3 @@
-'use client'
-
 import { useState, useEffect } from 'react'
 import { Plus, Hash } from 'lucide-react'
 import { createChannel, getChannels } from '../lib/supabase'
@@ -113,6 +111,12 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
                       placeholder="new-channel"
                       className="bg-transparent text-white placeholder-gray-400 flex-1 outline-none"
                       autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setIsCreating(false)
+                          setNewChannel('')
+                        }
+                      }}
                     />
                   </div>
                   <p className="mt-2 text-xs text-gray-400">Channel names can't contain spaces or special characters.</p>
