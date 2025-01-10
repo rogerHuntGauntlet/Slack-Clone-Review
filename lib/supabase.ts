@@ -42,8 +42,20 @@ interface MessageReactionPayload {
   eventType: 'UPDATE';
 }
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+// Add verbose logging for debugging
+console.log('Environment check:', {
+  hasUrl: !!supabaseUrl,
+  hasKey: !!supabaseKey,
+  url: supabaseUrl?.slice(0, 8) + '...',  // Only log the start of the URL for security
+})
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Missing Supabase environment variables!')
+  throw new Error('Missing required environment variables for Supabase configuration')
+}
 
 console.log('Initializing Supabase client with URL:', supabaseUrl)
 

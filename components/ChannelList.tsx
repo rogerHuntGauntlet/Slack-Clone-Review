@@ -25,13 +25,18 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
+    console.log('📋 [ChannelList] Channels updated:', channels);
     setLocalChannels(channels)
   }, [channels])
 
   const handleChannelSelect = async (channelId: string) => {
+    console.log('🔘 [ChannelList] Channel selected:', channelId);
     onChannelSelect(channelId)
     try {
+      console.log('👁️ [ChannelList] Updating channel view...');
       await updateChannelView(channelId)
+      console.log('✅ [ChannelList] Channel view updated');
+      
       // Update local unread count
       setLocalChannels(prevChannels =>
         prevChannels.map(channel =>
@@ -41,7 +46,7 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
         )
       )
     } catch (error) {
-      console.error('Error updating channel view:', error)
+      console.error('❌ [ChannelList] Error updating channel view:', error)
     }
   }
 
@@ -50,9 +55,9 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
     if (newChannel && !localChannels.some(channel => channel.name === newChannel) && currentUser) {
       setIsLoading(true)
       try {
-        console.log('Creating channel:', { name: newChannel, workspaceId })
+        console.log('➕ [ChannelList] Creating channel:', { name: newChannel, workspaceId })
         const result = await createChannel(newChannel, workspaceId)
-        console.log('Channel creation result:', result)
+        console.log('✅ [ChannelList] Channel creation result:', result)
 
         if (!result) {
           throw new Error('No result returned from createChannel')
@@ -64,7 +69,7 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
           name: result.name
         }
 
-        console.log('Created channel:', createdChannel)
+        console.log('✨ [ChannelList] Created channel:', createdChannel)
         
         // Update local state
         setLocalChannels(prevChannels => [...prevChannels, createdChannel])
@@ -74,17 +79,17 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
 
         // Refresh the channel list
         try {
-          console.log('Fetching updated channel list')
+          console.log('🔄 [ChannelList] Refreshing channel list...')
           const updatedChannels = await getChannels(workspaceId)
-          console.log('Updated channels:', updatedChannels)
+          console.log('✅ [ChannelList] Channel list refreshed:', updatedChannels)
           setLocalChannels(updatedChannels)
         } catch (refreshError) {
-          console.error('Error refreshing channel list:', refreshError)
+          console.error('❌ [ChannelList] Error refreshing channel list:', refreshError)
           toast.error('Channel created but failed to refresh the list')
         }
       } catch (err) {
         const error = err as Error
-        console.error('Error creating channel:', error)
+        console.error('❌ [ChannelList] Error creating channel:', error)
         console.error('Error details:', {
           name: error.name,
           message: error.message,
