@@ -26,6 +26,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Suspense } from 'react'
 import type { Workspace } from '@/types/supabase'
 import ActivityFeed from '../../components/ActivityFeed'
+import logger from '@/lib/logger'
 
 interface WorkspaceListProps {
   workspaces: Workspace[];
@@ -37,6 +38,7 @@ interface WorkspaceListProps {
 }
 
 export default function Platform() {
+  logger.log('🚀 [Platform] Main Platform component mounting...');
   return (
     <Suspense fallback={<div>Loading...</div>}>
       <PlatformContent />
@@ -45,6 +47,7 @@ export default function Platform() {
 }
 
 function PlatformContent() {
+  logger.log('🏗️ [Platform] PlatformContent component initializing...');
   const [user, setUser] = useState<{ id: string; email: string; username?: string } | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState('')
   const [activeChannel, setActiveChannel] = useState('')
@@ -66,22 +69,55 @@ function PlatformContent() {
   const searchParams = useSearchParams()
   const [isChatExpanded, setIsChatExpanded] = useState(false)
 
+  logger.log('⚡ [Platform] Setting up Supabase client...');
   const supabase = createClientComponentClient()
 
   useEffect(() => {
+    logger.log('🔄 [Platform] Initial useEffect running...');
+    document.documentElement.classList.add('dark')
+    const workspaceId = searchParams.get('workspaceId')
+    if (workspaceId) {
+      logger.log('🔍 [Platform] Found workspaceId in URL:', workspaceId);
+      fetchWorkspaceName(workspaceId).then(name => {
+        if (name) setJoiningWorkspaceName(name)
+      })
+    }
+
+    logger.log('🔌 [Platform] Testing Supabase connection...');
+    testSupabaseConnection().then(async (isConnected: boolean) => {
+      if (isConnected) {
+        logger.log('✅ [Platform] Supabase connection successful');
+        const tablesExist = await testDatabaseTables()
+        if (!tablesExist) {
+          logger.error('❌ [Platform] Database tables not found');
+          setError('Database tables not found or inaccessible. Please check your database setup.')
+          return
+        }
+        logger.log('✅ [Platform] Database tables verified');
+        fetchUserCount()
+      } else {
+        logger.error('❌ [Platform] Failed to connect to Supabase');
+        setError('Failed to connect to the database. Please try again later.')
+      }
+    })
+  }, [])
+
+  useEffect(() => {
     const checkUser = async () => {
-      console.log('Checking user...')
+      logger.log('👤 [Platform] Checking user session...')
       setLoading(true)
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        console.log('Session:', session)
+        logger.log('🔑 [Platform] Session:', session ? 'Found' : 'Not found')
         if (session && session.user) {
+          logger.log('👤 [Platform] User found in session:', session.user.email)
           let userData = await getUserByEmail(session.user.email)
           if (!userData || userData.id !== session.user.id) {
-            console.log('Updating user profile ID for:', session.user.email)
+            logger.log('🔄 [Platform] Updating user profile ID for:', session.user.email)
             userData = await updateUserProfileId(session.user.email, session.user.id)
           }
           if (userData) {
+            logger.log('✅ [Platform] User data retrieved:', userData.email)
             setUser(userData)
             await fetchUserData()
           } else {
@@ -89,9 +125,11 @@ function PlatformContent() {
           }
         } else {
           const storedEmail = sessionStorage.getItem('userEmail')
+          logger.log('📧 [Platform] Checking stored email:', storedEmail)
           if (storedEmail) {
             const userData = await getUserByEmail(storedEmail)
             if (userData) {
+              logger.log('✅ [Platform] User data retrieved from stored email')
               setUser(userData)
               await fetchUserData()
             } else {
@@ -102,7 +140,7 @@ function PlatformContent() {
           }
         }
       } catch (error) {
-        console.error('Error checking user:', error)
+        logger.error('❌ [Platform] Error checking user:', error)
         router.push('/auth')
       } finally {
         setLoading(false)
@@ -112,68 +150,50 @@ function PlatformContent() {
   }, [router, supabase.auth])
 
   const fetchUserData = async () => {
-    console.log('Fetching user data...')
+    logger.log('📊 [Platform] Starting fetchUserData...')
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
+        logger.error('❌ [Platform] No active session in fetchUserData')
         throw new Error('No active session')
       }
-      console.log('Session:', session)
+      logger.log('🔑 [Platform] Session found in fetchUserData:', session.user.email)
+      
       // Try to get or create user profile
       let userProfile = await getUserByEmail(session.user.email)
-      console.log('User profile:', userProfile)
+      logger.log('👤 [Platform] Initial user profile check:', userProfile ? 'Found' : 'Not found')
+      
       if (!userProfile) {
-        console.log('Creating user profile for:', session.user.email)
+        logger.log('👤 [Platform] Creating new user profile for:', session.user.email)
         userProfile = await createUserProfile(session.user.email)
         if (!userProfile) {
+          logger.error('❌ [Platform] Failed to create user profile')
           throw new Error('Failed to create user profile')
         }
       }
       
-      console.log('User profile:', userProfile)
+      logger.log('✅ [Platform] User profile confirmed:', userProfile)
       setUser(userProfile)
       
-      console.log('Fetching workspaces for user:', session.user.id)
+      logger.log('🏢 [Platform] Fetching workspaces for user:', session.user.id)
       const userWorkspaces = await getWorkspaces()
-      console.log('Fetched workspaces:', userWorkspaces)
+      logger.log('📋 [Platform] Fetched workspaces:', userWorkspaces)
       
       setWorkspaces(userWorkspaces)
       setUserWorkspaceIds(userWorkspaces.map((workspace: { id: string }) => workspace.id))
       
       if (userWorkspaces.length > 0) {
+        logger.log('✨ [Platform] User has existing workspaces')
         setShowWorkspaceSelection(true)
       } else {
+        logger.log('🆕 [Platform] No workspaces found, showing workspace selection')
         setShowWorkspaceSelection(true)
       }
     } catch (error) {
-      console.log('Error fetching user data:', error)
-      console.error('Error fetching user data:', error)
+      logger.error('❌ [Platform] Error in fetchUserData:', error)
       setError('Failed to fetch user data. Please try logging in again.')
     }
   }
-
-  useEffect(() => {
-    document.documentElement.classList.add('dark')
-    const workspaceId = searchParams.get('workspaceId')
-    if (workspaceId) {
-      fetchWorkspaceName(workspaceId).then(name => {
-        if (name) setJoiningWorkspaceName(name)
-      })
-    }
-    testSupabaseConnection().then(async (isConnected: boolean) => {
-      if (isConnected) {
-        console.log('Supabase connection successful')
-        const tablesExist = await testDatabaseTables()
-        if (!tablesExist) {
-          setError('Database tables not found or inaccessible. Please check your database setup.')
-          return
-        }
-        fetchUserCount()
-      } else {
-        setError('Failed to connect to the database. Please try again later.')
-      }
-    })
-  }, [])
 
   useEffect(() => {
     if (isDarkMode) {
@@ -189,7 +209,7 @@ function PlatformContent() {
       setWorkspaces(userWorkspaces)
       return userWorkspaces
     } catch (error) {
-      console.error('Error fetching workspaces:', error)
+      logger.error('Error fetching workspaces:', error)
       return []
     }
   }
@@ -201,7 +221,7 @@ function PlatformContent() {
         setActiveChannel(channels[0].id)
       }
     } catch (error) {
-      console.error('Error fetching channels:', error)
+      logger.error('Error fetching channels:', error)
       setError('Failed to fetch channels. Please try again.')
     }
   }
@@ -211,7 +231,7 @@ function PlatformContent() {
       const count = await getUserCount()
       setUserCount(count)
     } catch (error) {
-      console.error('Error fetching user count:', error)
+      logger.error('Error fetching user count:', error)
       setError('Failed to fetch user count. Please try again.')
     }
   }
@@ -250,13 +270,13 @@ function PlatformContent() {
         throw new Error('Failed to get or create user')
       }
     } catch (error: any) {
-      console.error('Error during email submission:', error)
+      logger.error('Error during email submission:', error)
       setError(error.message || 'An unexpected error occurred. Please try again.')
     }
   }
 
   const handleError = (error: any, defaultMessage: string) => {
-    console.error(defaultMessage, error)
+    logger.error(defaultMessage, error)
     setError(error.message || defaultMessage)
   }
 
@@ -283,7 +303,7 @@ function PlatformContent() {
       setNewWorkspaceName('')
       setShowWorkspaceSelection(false)
     } catch (error) {
-      console.error('Error creating workspace:', error)
+      logger.error('Error creating workspace:', error)
       setError('Failed to create workspace. Please try again.')
     }
   }
@@ -299,7 +319,7 @@ function PlatformContent() {
       setShowWorkspaceSelection(false)
       setJoiningWorkspaceName(null)
     } catch (error) {
-      console.error('Error joining workspace:', error)
+      logger.error('Error joining workspace:', error)
       setError('Failed to join workspace. Please try again.')
     }
   }
@@ -335,7 +355,7 @@ function PlatformContent() {
       if (error) throw error
       return data.name
     } catch (error) {
-      console.error('Error fetching workspace name:', error)
+      logger.error('Error fetching workspace name:', error)
       return null
     }
   }
@@ -357,7 +377,7 @@ function PlatformContent() {
       setUserWorkspaceIds([])
       router.push('/auth')
     } catch (error) {
-      console.error('Error signing out:', error)
+      logger.error('Error signing out:', error)
       setError('Failed to sign out. Please try again.')
     }
   }
@@ -431,7 +451,7 @@ function PlatformContent() {
         setNewWorkspaceName={setNewWorkspaceName}
         onToggleFavorite={(workspaceId) => {
           // Add your favorite toggle logic here
-          console.log('Toggle favorite for workspace:', workspaceId)
+          logger.log('Toggle favorite for workspace:', workspaceId)
         }}
       />
     )
