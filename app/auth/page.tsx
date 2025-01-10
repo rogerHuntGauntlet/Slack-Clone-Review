@@ -148,7 +148,8 @@ function AuthContent({ workspaceId }: AuthContentProps) {
       const userProfile = await createUserProfile(email)
 
       if (workspaceId && user) {
-        await addUserToWorkspace(user.id)
+        await addUserToWorkspace(userProfile.id)
+        router.push('/platform')
       }
 
       router.push('/platform')
@@ -180,13 +181,15 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 
       // Create user profile
       const udata = await createUserProfile(email)
-      setMessage('Profile created. Adding you to workspace...')
+      
       if (workspaceId && udata) {
+        setMessage('Profile created. Adding you to workspace...')
         await addUserToWorkspace(udata.id)
-        setMessage('Added to the workspace! Please check your email for confirmation.')
+        router.push('/platform')
       }
 
-      setMessage('Please check your email to confirm your account.')
+      setMessage('Profile created. Lets roll!')
+      router.push('/platform')
     } catch (error: any) {
       setError(error.message)
     } finally {
@@ -198,15 +201,15 @@ function AuthContent({ workspaceId }: AuthContentProps) {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       <div className="max-w-6xl w-full mx-4 flex flex-col lg:flex-row gap-8 py-8">
         {/* Left side - Branding */}
-        <motion.div 
+        <motion.div
           className="flex-1 flex flex-col justify-center"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <a 
-            href="https://www.youtube.com/watch?v=dQw4w9WgXcQ" 
-            target="_blank" 
+          <a
+            href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            target="_blank"
             className="w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg group hover:scale-105 transition-all duration-300 mb-6"
           >
             <span className="text-3xl font-bold text-white">?</span>
@@ -223,7 +226,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
           </p>
 
           {workspaceName && (
-            <motion.div 
+            <motion.div
               className="p-6 bg-white/5 rounded-xl border border-white/10 max-w-md backdrop-blur-lg"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -240,14 +243,14 @@ function AuthContent({ workspaceId }: AuthContentProps) {
         </motion.div>
 
         {/* Right side - Auth form */}
-        <motion.div 
+        <motion.div
           className="w-full lg:w-[400px] bg-black/40 backdrop-blur-xl rounded-2xl shadow-2xl p-8 border border-white/10"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         >
           {error && (
-            <motion.div 
+            <motion.div
               className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-xl"
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -255,9 +258,9 @@ function AuthContent({ workspaceId }: AuthContentProps) {
               <p className="text-red-400 text-sm">{error}</p>
             </motion.div>
           )}
-          
+
           {message && (
-            <motion.div 
+            <motion.div
               className="mb-6 p-4 bg-green-500/10 border border-green-500/50 rounded-xl"
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -277,9 +280,8 @@ function AuthContent({ workspaceId }: AuthContentProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className={`mt-1 block w-full rounded-xl bg-white/5 border ${
-                  validationErrors.email ? 'border-red-500' : 'border-white/10'
-                } text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-all duration-300 h-12 px-4`}
+                className={`mt-1 block w-full rounded-xl bg-white/5 border ${validationErrors.email ? 'border-red-500' : 'border-white/10'
+                  } text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-all duration-300 h-12 px-4`}
                 placeholder="you@example.com"
               />
               {validationErrors.email && (
@@ -298,9 +300,8 @@ function AuthContent({ workspaceId }: AuthContentProps) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className={`mt-1 block w-full rounded-xl bg-white/5 border ${
-                    validationErrors.password ? 'border-red-500' : 'border-white/10'
-                  } text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-all duration-300 h-12 px-4 pr-10`}
+                  className={`mt-1 block w-full rounded-xl bg-white/5 border ${validationErrors.password ? 'border-red-500' : 'border-white/10'
+                    } text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-all duration-300 h-12 px-4 pr-10`}
                   placeholder="••••••••"
                 />
                 <button
