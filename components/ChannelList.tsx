@@ -23,21 +23,16 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
   const [localChannels, setLocalChannels] = useState<Channel[]>(channels)
   const [isCreating, setIsCreating] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    console.log('📋 [ChannelList] Channels updated:', channels);
     setLocalChannels(channels)
   }, [channels])
 
   const handleChannelSelect = async (channelId: string) => {
-    console.log('🔘 [ChannelList] Channel selected:', channelId);
     onChannelSelect(channelId)
     try {
-      console.log('👁️ [ChannelList] Updating channel view...');
       await updateChannelView(channelId)
-      console.log('✅ [ChannelList] Channel view updated');
-      
-      // Update local unread count
       setLocalChannels(prevChannels =>
         prevChannels.map(channel =>
           channel.id === channelId
@@ -46,105 +41,97 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
         )
       )
     } catch (error) {
-      console.error('❌ [ChannelList] Error updating channel view:', error)
+      toast.error('Failed to update channel view')
     }
+  }
+
+  const validateChannelName = (name: string) => {
+    if (!name) return 'Channel name is required'
+    if (name.length < 2) return 'Channel name must be at least 2 characters'
+    if (name.length > 80) return 'Channel name must be less than 80 characters'
+    if (!/^[a-z0-9-_]+$/.test(name)) return 'Channel name can only contain lowercase letters, numbers, hyphens, and underscores'
+    if (localChannels.some(channel => channel.name === name)) return 'Channel name already exists'
+    return null
   }
 
   const handleAddChannel = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (newChannel && !localChannels.some(channel => channel.name === newChannel) && currentUser) {
-      setIsLoading(true)
-      try {
-        console.log('➕ [ChannelList] Creating channel:', { name: newChannel, workspaceId })
-        const result = await createChannel(newChannel, workspaceId)
-        console.log('✅ [ChannelList] Channel creation result:', result)
+    setError(null)
 
-        if (!result) {
-          throw new Error('No result returned from createChannel')
-        }
+    // Validate channel name
+    const validationError = validateChannelName(newChannel)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
 
-        // Create a channel object from the result
-        const createdChannel = {
-          id: result.id,
-          name: result.name
-        }
-
-        console.log('✨ [ChannelList] Created channel:', createdChannel)
-        
-        // Update local state
-        setLocalChannels(prevChannels => [...prevChannels, createdChannel])
-        onChannelSelect(createdChannel.id)
-        setNewChannel('')
-        setIsCreating(false)
-
-        // Refresh the channel list
-        try {
-          console.log('🔄 [ChannelList] Refreshing channel list...')
-          const updatedChannels = await getChannels(workspaceId)
-          console.log('✅ [ChannelList] Channel list refreshed:', updatedChannels)
-          setLocalChannels(updatedChannels)
-        } catch (refreshError) {
-          console.error('❌ [ChannelList] Error refreshing channel list:', refreshError)
-          toast.error('Channel created but failed to refresh the list')
-        }
-      } catch (err) {
-        const error = err as Error
-        console.error('❌ [ChannelList] Error creating channel:', error)
-        console.error('Error details:', {
-          name: error.name,
-          message: error.message,
-          stack: error.stack
-        })
-        toast.error('Failed to create channel')
-      } finally {
-        setIsLoading(false)
+    setIsLoading(true)
+    try {
+      const result = await createChannel(newChannel, workspaceId)
+      
+      if (!result) {
+        throw new Error('Failed to create channel')
       }
+
+      // Update local state
+      const createdChannel = {
+        id: result.id,
+        name: result.name,
+        unread_count: 0
+      }
+      
+      setLocalChannels(prevChannels => [...prevChannels, createdChannel])
+      onChannelSelect(createdChannel.id)
+      setNewChannel('')
+      setIsCreating(false)
+      toast.success('Channel created successfully!')
+
+      // Refresh channel list
+      const updatedChannels = await getChannels(workspaceId)
+      setLocalChannels(updatedChannels)
+    } catch (err) {
+      const error = err as Error
+      setError(error.message)
+      toast.error('Failed to create channel')
+    } finally {
+      setIsLoading(false)
     }
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Fixed Header */}
-      <div className="flex-shrink-0 mb-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-100">Channels</h2>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setIsCreating(true)}
-            className="p-1 hover:bg-gray-700 rounded-md transition-colors"
-          >
-            <Plus size={20} className="text-gray-400 hover:text-gray-200" />
-          </motion.button>
-        </div>
+    <div className="flex flex-col space-y-2">
+      <div className="flex items-center justify-between px-2 py-2">
+        <h3 className="text-sm font-semibold text-gray-400 uppercase">Channels</h3>
+        <button
+          onClick={() => setIsCreating(true)}
+          className="p-1 hover:bg-gray-700/50 rounded transition-colors"
+          title="Create Channel"
+        >
+          <Plus size={16} className="text-gray-400" />
+        </button>
       </div>
 
-      {/* Scrollable Channel List */}
-      <div className="flex-1 overflow-y-auto -mr-2 pr-2 custom-scrollbar">
-        <AnimatePresence>
-          {localChannels.map((channel, index) => (
-            <motion.button
-              key={channel.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05 }}
-              className={`w-full text-left p-2 rounded-lg flex items-center gap-2 mb-1 transition-all duration-200 group ${
-                activeChannel === channel.id 
-                  ? 'bg-gray-700/80 text-white' 
-                  : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
-              }`}
-              onClick={() => handleChannelSelect(channel.id)}
-            >
-              <Hash size={16} className="flex-shrink-0" />
-              <span className="truncate">{channel.name}</span>
-              {channel.unread_count ? (
-                <span className="ml-auto bg-indigo-500 text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
-                  {channel.unread_count > 99 ? '99+' : channel.unread_count}
-                </span>
-              ) : null}
-            </motion.button>
-          ))}
-        </AnimatePresence>
+      <div className="space-y-0.5">
+        {localChannels.map((channel) => (
+          <button
+            key={channel.id}
+            onClick={() => handleChannelSelect(channel.id)}
+            className={`
+              w-full px-2 py-1 text-left flex items-center space-x-2 rounded-md transition-colors
+              ${activeChannel === channel.id 
+                ? 'bg-gray-700/75 text-white' 
+                : 'text-gray-300 hover:bg-gray-700/50 hover:text-gray-100'}
+            `}
+          >
+            <Hash size={15} className="flex-shrink-0 text-gray-400" />
+            <span className="truncate">{channel.name}</span>
+            {channel.unread_count ? (
+              <span className="ml-auto bg-indigo-500 text-white text-xs px-2 py-0.5 rounded-full">
+                {channel.unread_count}
+              </span>
+            ) : null}
+          </button>
+        ))}
       </div>
 
       {/* Create Channel Modal */}
@@ -172,7 +159,10 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
                     <input
                       type="text"
                       value={newChannel}
-                      onChange={(e) => setNewChannel(e.target.value)}
+                      onChange={(e) => {
+                        setNewChannel(e.target.value.toLowerCase())
+                        setError(null)
+                      }}
                       placeholder="new-channel"
                       className="bg-transparent text-white placeholder-gray-400 flex-1 outline-none"
                       autoFocus
@@ -185,7 +175,12 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
                       }}
                     />
                   </div>
-                  <p className="mt-2 text-xs text-gray-400">Channel names can't contain spaces or special characters.</p>
+                  {error && (
+                    <p className="mt-2 text-sm text-red-400">{error}</p>
+                  )}
+                  <p className="mt-2 text-xs text-gray-400">
+                    Channel names can only contain lowercase letters, numbers, hyphens, and underscores.
+                  </p>
                 </div>
                 <div className="flex gap-2 pt-2">
                   <button

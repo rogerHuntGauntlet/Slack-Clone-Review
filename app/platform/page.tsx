@@ -27,6 +27,7 @@ import { Suspense } from 'react'
 import type { Workspace } from '@/types/supabase'
 import ActivityFeed from '../../components/ActivityFeed'
 import logger from '@/lib/logger'
+import LogDisplay from '../../components/LogDisplay'
 
 interface WorkspaceListProps {
   workspaces: Workspace[];
@@ -38,16 +39,35 @@ interface WorkspaceListProps {
 }
 
 export default function Platform() {
-  logger.log('🚀 [Platform] Main Platform component mounting...');
+  const [logs, setLogs] = useState<string[]>([])
+  
+  const addLog = (message: string) => {
+    setLogs(prev => [...prev, `${new Date().toLocaleTimeString()} - ${message}`])
+  }
+
+  useEffect(() => {
+    // Set up logger only once when component mounts
+    logger.log = addLog
+    
+    // Initial logs
+    addLog('Platform mounting')
+    addLog(`Environment: ${process.env.NODE_ENV}`)
+
+    // Cleanup
+    return () => {
+      logger.log = console.log // Reset logger on unmount
+    }
+  }, []) // Empty dependency array means this only runs once on mount
+
   return (
     <Suspense fallback={<div>Loading...</div>}>
-      <PlatformContent />
+      <LogDisplay logs={logs} />
+      <PlatformContent addLog={addLog} />
     </Suspense>
   )
 }
 
-function PlatformContent() {
-  logger.log('🏗️ [Platform] PlatformContent component initializing...');
+function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
   const [user, setUser] = useState<{ id: string; email: string; username?: string } | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState('')
   const [activeChannel, setActiveChannel] = useState('')
@@ -68,35 +88,38 @@ function PlatformContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isChatExpanded, setIsChatExpanded] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [showSearchResults, setShowSearchResults] = useState(false)
 
-  logger.log('⚡ [Platform] Setting up Supabase client...');
   const supabase = createClientComponentClient()
 
   useEffect(() => {
-    logger.log('🔄 [Platform] Initial useEffect running...');
+    addLog('PlatformContent component initializing...')
+    addLog('Testing Supabase connection...')
+    
     document.documentElement.classList.add('dark')
     const workspaceId = searchParams.get('workspaceId')
     if (workspaceId) {
-      logger.log('🔍 [Platform] Found workspaceId in URL:', workspaceId);
+      addLog(`Found workspaceId in URL: ${workspaceId}`)
       fetchWorkspaceName(workspaceId).then(name => {
         if (name) setJoiningWorkspaceName(name)
       })
     }
 
-    logger.log('🔌 [Platform] Testing Supabase connection...');
     testSupabaseConnection().then(async (isConnected: boolean) => {
       if (isConnected) {
-        logger.log('✅ [Platform] Supabase connection successful');
+        addLog('Supabase connection successful')
         const tablesExist = await testDatabaseTables()
         if (!tablesExist) {
-          logger.error('❌ [Platform] Database tables not found');
+          addLog('Database tables not found')
           setError('Database tables not found or inaccessible. Please check your database setup.')
           return
         }
-        logger.log('✅ [Platform] Database tables verified');
+        addLog('Database tables verified')
         fetchUserCount()
       } else {
-        logger.error('❌ [Platform] Failed to connect to Supabase');
+        addLog('Failed to connect to Supabase')
         setError('Failed to connect to the database. Please try again later.')
       }
     })
@@ -104,20 +127,20 @@ function PlatformContent() {
 
   useEffect(() => {
     const checkUser = async () => {
-      logger.log('👤 [Platform] Checking user session...')
+      addLog('Checking user session...')
       setLoading(true)
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        logger.log('🔑 [Platform] Session:', session ? 'Found' : 'Not found')
+        addLog(session ? 'Session found' : 'No session found')
         if (session && session.user) {
-          logger.log('👤 [Platform] User found in session:', session.user.email)
+          addLog(`User found in session: ${session.user.email}`)
           let userData = await getUserByEmail(session.user.email)
           if (!userData || userData.id !== session.user.id) {
-            logger.log('🔄 [Platform] Updating user profile ID for:', session.user.email)
+            addLog(`Updating user profile ID for: ${session.user.email}`)
             userData = await updateUserProfileId(session.user.email, session.user.id)
           }
           if (userData) {
-            logger.log('✅ [Platform] User data retrieved:', userData.email)
+            addLog(`User data retrieved: ${userData.email}`)
             setUser(userData)
             await fetchUserData()
           } else {
@@ -125,11 +148,11 @@ function PlatformContent() {
           }
         } else {
           const storedEmail = sessionStorage.getItem('userEmail')
-          logger.log('📧 [Platform] Checking stored email:', storedEmail)
+          addLog(`Checking stored email: ${storedEmail}`)
           if (storedEmail) {
             const userData = await getUserByEmail(storedEmail)
             if (userData) {
-              logger.log('✅ [Platform] User data retrieved from stored email')
+              addLog('User data retrieved from stored email')
               setUser(userData)
               await fetchUserData()
             } else {
@@ -140,7 +163,7 @@ function PlatformContent() {
           }
         }
       } catch (error) {
-        logger.error('❌ [Platform] Error checking user:', error)
+        addLog(`Error checking user: ${error}`)
         router.push('/auth')
       } finally {
         setLoading(false)
@@ -150,47 +173,46 @@ function PlatformContent() {
   }, [router, supabase.auth])
 
   const fetchUserData = async () => {
-    logger.log('📊 [Platform] Starting fetchUserData...')
+    addLog('Starting fetchUserData...')
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
-        logger.error('❌ [Platform] No active session in fetchUserData')
+        addLog('No active session in fetchUserData')
         throw new Error('No active session')
       }
-      logger.log('🔑 [Platform] Session found in fetchUserData:', session.user.email)
+      addLog(`Session found in fetchUserData: ${session.user.email}`)
       
-      // Try to get or create user profile
       let userProfile = await getUserByEmail(session.user.email)
-      logger.log('👤 [Platform] Initial user profile check:', userProfile ? 'Found' : 'Not found')
+      addLog(`Initial user profile check: ${userProfile ? 'Found' : 'Not found'}`)
       
       if (!userProfile) {
-        logger.log('👤 [Platform] Creating new user profile for:', session.user.email)
+        addLog(`Creating new user profile for: ${session.user.email}`)
         userProfile = await createUserProfile(session.user.email)
         if (!userProfile) {
-          logger.error('❌ [Platform] Failed to create user profile')
+          addLog('Failed to create user profile')
           throw new Error('Failed to create user profile')
         }
       }
       
-      logger.log('✅ [Platform] User profile confirmed:', userProfile)
+      addLog('User profile confirmed')
       setUser(userProfile)
       
-      logger.log('🏢 [Platform] Fetching workspaces for user:', session.user.id)
+      addLog(`Fetching workspaces for user: ${session.user.id}`)
       const userWorkspaces = await getWorkspaces()
-      logger.log('📋 [Platform] Fetched workspaces:', userWorkspaces)
+      addLog(`Fetched ${userWorkspaces.length} workspaces`)
       
       setWorkspaces(userWorkspaces)
       setUserWorkspaceIds(userWorkspaces.map((workspace: { id: string }) => workspace.id))
       
       if (userWorkspaces.length > 0) {
-        logger.log('✨ [Platform] User has existing workspaces')
+        addLog('User has existing workspaces')
         setShowWorkspaceSelection(true)
       } else {
-        logger.log('🆕 [Platform] No workspaces found, showing workspace selection')
+        addLog('No workspaces found, showing workspace selection')
         setShowWorkspaceSelection(true)
       }
     } catch (error) {
-      logger.error('❌ [Platform] Error in fetchUserData:', error)
+      addLog(`Error in fetchUserData: ${error}`)
       setError('Failed to fetch user data. Please try logging in again.')
     }
   }
@@ -389,6 +411,34 @@ function PlatformContent() {
     setShowWorkspaceSelection(true)
   }
 
+  const handleSearch = async (query: string) => {
+    if (!query.trim() || !activeWorkspace) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          id,
+          content,
+          created_at,
+          channel_id,
+          user_id,
+          users:user_id (username, email)
+        `)
+        .eq('workspace_id', activeWorkspace)
+        .ilike('content', `%${query}%`)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      setSearchResults(data || []);
+      setShowSearchResults(true);
+    } catch (error) {
+      logger.error('Error searching messages:', error);
+      setError('Failed to search messages');
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>
   }
@@ -469,7 +519,43 @@ function PlatformContent() {
           onLogout={handleLogout}
           onReturnToWorkspaceSelection={handleReturnToWorkspaceSelection}
           activeWorkspaceId={activeWorkspace}
+          onSearch={handleSearch}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
         />
+        {showSearchResults && searchResults.length > 0 && (
+          <div className="absolute top-16 right-4 w-96 max-h-96 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-xl z-50">
+            <div className="p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Search Results</h3>
+                <button
+                  onClick={() => setShowSearchResults(false)}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  ✕
+                </button>
+              </div>
+              {searchResults.map((result) => (
+                <div
+                  key={result.id}
+                  onClick={() => {
+                    // Handle clicking a search result
+                    setActiveChannel(result.channel_id);
+                    setShowSearchResults(false);
+                    // You might want to add logic here to scroll to the specific message
+                  }}
+                  className="p-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer rounded-lg mb-2"
+                >
+                  <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400">
+                    <span>{result.users?.username || result.users?.email}</span>
+                    <span>{new Date(result.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <p className="mt-1 text-gray-800 dark:text-gray-200">{result.content}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="flex flex-1 overflow-hidden">
           <CollapsibleDMList
             workspaceId={activeWorkspace}
