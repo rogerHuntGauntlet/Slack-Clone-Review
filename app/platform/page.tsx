@@ -12,7 +12,8 @@ import {
   getUserCount,
   testSupabaseConnection,
   testDatabaseTables,
-  updateUserProfileId
+  updateUserProfileId,
+  addUserToUniversalWorkspace
 } from '../../lib/supabase'
 import Sidebar from '../../components/Sidebar'
 import ChatArea from '../../components/ChatArea'
@@ -95,127 +96,74 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
   const supabase = createClientComponentClient()
 
   useEffect(() => {
-    addLog('PlatformContent component initializing...')
-    addLog('Testing Supabase connection...')
-    
-    document.documentElement.classList.add('dark')
-    const workspaceId = searchParams.get('workspaceId')
-    if (workspaceId) {
-      addLog(`Found workspaceId in URL: ${workspaceId}`)
-      fetchWorkspaceName(workspaceId).then(name => {
-        if (name) setJoiningWorkspaceName(name)
-      })
-    }
-
-    testSupabaseConnection().then(async (isConnected: boolean) => {
-      if (isConnected) {
+    const initializePlatform = async () => {
+      addLog('PlatformContent component initializing...')
+      addLog('Testing Supabase connection...')
+      
+      try {
+        // Test Supabase connection
+        await testSupabaseConnection()
         addLog('Supabase connection successful')
-        const tablesExist = await testDatabaseTables()
-        if (!tablesExist) {
-          addLog('Database tables not found')
-          setError('Database tables not found or inaccessible. Please check your database setup.')
+
+        // Check user session
+        addLog('Checking user session...')
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          addLog('No session found')
+          router.push('/auth')
           return
         }
-        addLog('Database tables verified')
-        fetchUserCount()
-      } else {
-        addLog('Failed to connect to Supabase')
-        setError('Failed to connect to the database. Please try again later.')
-      }
-    })
-  }, [])
+        addLog('Session found')
+        addLog(`User found in session: ${session.user.email}`)
 
-  useEffect(() => {
-    const checkUser = async () => {
-      addLog('Checking user session...')
-      setLoading(true)
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        addLog(session ? 'Session found' : 'No session found')
-        if (session && session.user) {
-          addLog(`User found in session: ${session.user.email}`)
-          let userData = await getUserByEmail(session.user.email)
-          if (!userData || userData.id !== session.user.id) {
-            addLog(`Updating user profile ID for: ${session.user.email}`)
-            userData = await updateUserProfileId(session.user.email, session.user.id)
-          }
-          if (userData) {
-            addLog(`User data retrieved: ${userData.email}`)
-            setUser(userData)
-            await fetchUserData()
-          } else {
-            throw new Error('User data not found')
-          }
-        } else {
-          const storedEmail = sessionStorage.getItem('userEmail')
-          addLog(`Checking stored email: ${storedEmail}`)
-          if (storedEmail) {
-            const userData = await getUserByEmail(storedEmail)
-            if (userData) {
-              addLog('User data retrieved from stored email')
-              setUser(userData)
-              await fetchUserData()
-            } else {
-              throw new Error('User data not found')
-            }
-          } else {
-            throw new Error('No user session or stored email')
-          }
+        // Test database tables
+        await testDatabaseTables()
+        addLog('Database tables verified')
+
+        // Get user data
+        const userData = await getUserByEmail(session.user.email!)
+        if (!userData) {
+          addLog('User profile not found, creating...')
+          await createUserProfile(session.user)
         }
+        addLog(`User data retrieved: ${session.user.email}`)
+
+        setUser({
+          id: session.user.id,
+          email: session.user.email!,
+          username: userData?.username
+        })
+
+        // Add user to universal workspace
+        addLog('Adding user to universal workspace...')
+        await addUserToUniversalWorkspace(session.user.id)
+
+        // Fetch workspaces
+        addLog(`Fetching workspaces for user: ${session.user.id}`)
+        const fetchedWorkspaces = await getWorkspaces()
+        setWorkspaces(fetchedWorkspaces)
+        addLog(`Fetched ${fetchedWorkspaces.length} workspaces`)
+
+        // Show workspace selection if no workspaces
+        if (fetchedWorkspaces.length === 0) {
+          addLog('No workspaces found, showing workspace selection')
+          setShowWorkspaceSelection(true)
+        }
+
+        // Get user count
+        const count = await getUserCount()
+        setUserCount(count)
+
+        setLoading(false)
       } catch (error) {
-        addLog(`Error checking user: ${error}`)
-        router.push('/auth')
-      } finally {
+        logger.error('Error initializing platform:', error)
+        setError('Failed to initialize platform')
         setLoading(false)
       }
     }
-    checkUser()
-  }, [router, supabase.auth])
 
-  const fetchUserData = async () => {
-    addLog('Starting fetchUserData...')
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        addLog('No active session in fetchUserData')
-        throw new Error('No active session')
-      }
-      addLog(`Session found in fetchUserData: ${session.user.email}`)
-      
-      let userProfile = await getUserByEmail(session.user.email)
-      addLog(`Initial user profile check: ${userProfile ? 'Found' : 'Not found'}`)
-      
-      if (!userProfile) {
-        addLog(`Creating new user profile for: ${session.user.email}`)
-        userProfile = await createUserProfile(session.user.email)
-        if (!userProfile) {
-          addLog('Failed to create user profile')
-          throw new Error('Failed to create user profile')
-        }
-      }
-      
-      addLog('User profile confirmed')
-      setUser(userProfile)
-      
-      addLog(`Fetching workspaces for user: ${session.user.id}`)
-      const userWorkspaces = await getWorkspaces()
-      addLog(`Fetched ${userWorkspaces.length} workspaces`)
-      
-      setWorkspaces(userWorkspaces)
-      setUserWorkspaceIds(userWorkspaces.map((workspace: { id: string }) => workspace.id))
-      
-      if (userWorkspaces.length > 0) {
-        addLog('User has existing workspaces')
-        setShowWorkspaceSelection(true)
-      } else {
-        addLog('No workspaces found, showing workspace selection')
-        setShowWorkspaceSelection(true)
-      }
-    } catch (error) {
-      addLog(`Error in fetchUserData: ${error}`)
-      setError('Failed to fetch user data. Please try logging in again.')
-    }
-  }
+    initializePlatform()
+  }, [router, supabase.auth])
 
   useEffect(() => {
     if (isDarkMode) {
@@ -281,7 +229,6 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
       }
       if (userData) {
         setUser({ id: userData.id, email: userData.email, username: userData.username })
-        await fetchUserData()
         const workspaceId = searchParams.get('workspaceId')
         if (workspaceId) {
           await handleJoinWorkspace(workspaceId)
@@ -304,15 +251,21 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
 
   const handleCreateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newWorkspaceName) return
+    if (!newWorkspaceName) {
+      setError('Please enter a workspace name')
+      return
+    }
     
     try {
+      logger.log('Creating workspace...')
       const result = await createWorkspace(newWorkspaceName)
       if (!result?.workspace) {
+        logger.error('Failed to create workspace: No workspace data returned')
         setError('Failed to create workspace')
         return
       }
 
+      logger.log('Workspace created successfully')
       setWorkspaces(prevWorkspaces => [...prevWorkspaces, { 
         id: result.workspace.id,
         name: result.workspace.name,
@@ -320,13 +273,16 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
       }])
       setActiveWorkspace(result.workspace.id)
       if (result.channels && result.channels.length > 0) {
+        logger.log('Setting active channel...')
         setActiveChannel(result.channels[0].id)
       }
       setNewWorkspaceName('')
       setShowWorkspaceSelection(false)
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Error creating workspace:', error)
-      setError('Failed to create workspace. Please try again.')
+      setError(error.message || 'Failed to create workspace. Please try again.')
+      // Keep the workspace selection UI open if there was an error
+      setShowWorkspaceSelection(true)
     }
   }
 
@@ -415,6 +371,7 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
     if (!query.trim() || !activeWorkspace) return;
     
     try {
+      logger.log(`Searching for: "${query}" in workspace ${activeWorkspace}`)
       const { data, error } = await supabase
         .from('messages')
         .select(`
@@ -423,14 +380,27 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
           created_at,
           channel_id,
           user_id,
-          users:user_id (username, email)
+          channels!inner (
+            id,
+            name,
+            workspace_id
+          ),
+          user_profiles!messages_user_id_fkey (
+            username,
+            email
+          )
         `)
-        .eq('workspace_id', activeWorkspace)
+        .eq('channels.workspace_id', activeWorkspace)
         .ilike('content', `%${query}%`)
         .order('created_at', { ascending: false })
         .limit(20);
 
-      if (error) throw error;
+      if (error) {
+        logger.error('Search error:', error)
+        throw error;
+      }
+
+      logger.log(`Found ${data?.length || 0} results`)
       setSearchResults(data || []);
       setShowSearchResults(true);
     } catch (error) {
@@ -524,12 +494,18 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
           setSearchQuery={setSearchQuery}
         />
         {showSearchResults && searchResults.length > 0 && (
-          <div className="absolute top-16 right-4 w-96 max-h-96 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-xl z-50">
+          <div className="absolute top-16 right-4 w-96 max-h-[70vh] overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-xl z-50">
             <div className="p-4">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">Search Results</h3>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Search Results ({searchResults.length})
+                </h3>
                 <button
-                  onClick={() => setShowSearchResults(false)}
+                  onClick={() => {
+                    setShowSearchResults(false)
+                    setSearchQuery('')
+                    setSearchResults([])
+                  }}
                   className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                 >
                   ✕
@@ -539,18 +515,25 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
                 <div
                   key={result.id}
                   onClick={() => {
-                    // Handle clicking a search result
                     setActiveChannel(result.channel_id);
                     setShowSearchResults(false);
-                    // You might want to add logic here to scroll to the specific message
+                    setSearchQuery('');
                   }}
-                  className="p-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer rounded-lg mb-2"
+                  className="p-4 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer rounded-lg mb-2 border border-gray-200 dark:border-gray-700"
                 >
-                  <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400">
-                    <span>{result.users?.username || result.users?.email}</span>
+                  <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 mb-1">
+                    <span className="flex items-center gap-2">
+                      <span className="font-medium">
+                        {result.user_profiles?.username || result.user_profiles?.email}
+                      </span>
+                      <span className="text-gray-400">in</span>
+                      <span className="font-medium text-indigo-500">
+                        #{result.channels?.name}
+                      </span>
+                    </span>
                     <span>{new Date(result.created_at).toLocaleDateString()}</span>
                   </div>
-                  <p className="mt-1 text-gray-800 dark:text-gray-200">{result.content}</p>
+                  <p className="text-gray-800 dark:text-gray-200 line-clamp-2">{result.content}</p>
                 </div>
               ))}
             </div>

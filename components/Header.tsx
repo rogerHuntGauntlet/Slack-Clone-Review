@@ -1,5 +1,5 @@
 import { FC, useEffect, useState } from "react";
-import { Moon, Sun, User, PlusCircle, LogOut, Menu } from 'lucide-react';
+import { Moon, Sun, User, PlusCircle, LogOut, Menu, Search } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
@@ -50,6 +50,7 @@ const Header: FC<HeaderProps> = ({
   setSearchQuery
 }) => {
   const [workspaceName, setWorkspaceName] = useState<string>("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -73,12 +74,24 @@ const Header: FC<HeaderProps> = ({
     getWorkspaceName();
   }, [activeWorkspaceId]);
 
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim() && activeWorkspaceId) {
+      onSearch(searchQuery);
+    }
+  };
+
   return (
     <header className="relative z-50">
       <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 via-purple-600/20 to-pink-600/20 backdrop-blur-xl" />
       <div className="relative bg-gray-900/95 backdrop-blur-xl border-b border-white/10">
         <div className="max-w-screen-2xl mx-auto px-4">
-          <div className="h-16 flex items-center justify-between">
+          <div className="h-16 flex items-center justify-between gap-4">
             {/* Left - Workspace Name and AI Chat */}
             <div className="flex items-center space-x-4">
               <Link 
@@ -97,6 +110,29 @@ const Header: FC<HeaderProps> = ({
                 {workspaceName && <span className="text-gray-400 text-sm font-normal ml-2">Workspace</span>}
               </h1>
             </div>
+
+            {/* Center - Search */}
+            {activeWorkspaceId && (
+              <div className="flex-1 max-w-xl">
+                <form onSubmit={handleSubmit} className="relative">
+                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                    <Search className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={handleSearch}
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setIsSearchFocused(false)}
+                    placeholder="Search in workspace..."
+                    className={`w-full pl-10 pr-4 py-2 bg-gray-800 text-gray-200 placeholder-gray-400 rounded-lg border 
+                      ${isSearchFocused ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-700'} 
+                      focus:outline-none transition-all duration-200`}
+                  />
+                  <button type="submit" className="hidden">Search</button>
+                </form>
+              </div>
+            )}
 
             {/* Right - Navigation */}
             <nav className="flex items-center space-x-2">
@@ -123,19 +159,6 @@ const Header: FC<HeaderProps> = ({
                 label="Logout"
               />
             </nav>
-
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  onSearch(e.target.value);
-                }}
-                placeholder="Search messages..."
-                className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
           </div>
         </div>
       </div>

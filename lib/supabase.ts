@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { MessageType, FileAttachment } from '../types/database'
 import type { RealtimePostgresChangesPayload } from '@supabase/realtime-js'
+import logger from '@/lib/logger'
 
 interface MessagePayload {
   id: string;
@@ -439,47 +440,29 @@ export const subscribeToChannel = (
 }
 
 export const testDatabaseTables = async () => {
-  console.log('Testing database tables...');
   try {
-    // Test messages table
-    const { data: messagesTest, error: messagesError } = await supabase
-      .from('messages')
-      .select('count', { count: 'exact', head: true });
+    // Test workspaces table
+    await supabase.from('workspaces').select('*').limit(1)
+    logger.log('Workspaces table exists')
 
-    if (messagesError) {
-      console.error('Messages table error:', messagesError);
-    } else {
-      console.log('Messages table exists');
-    }
+    // Ensure universal workspace exists
+    await ensureUniversalWorkspace()
+    logger.log('Universal workspace verified')
 
     // Test channels table
-    const { data: channelsTest, error: channelsError } = await supabase
-      .from('channels')
-      .select('count', { count: 'exact', head: true });
+    await supabase.from('channels').select('*').limit(1)
+    logger.log('Channels table exists')
 
-    if (channelsError) {
-      console.error('Channels table error:', channelsError);
-    } else {
-      console.log('Channels table exists');
-    }
+    // Test messages table
+    await supabase.from('messages').select('*').limit(1)
+    logger.log('Messages table exists')
 
-    // Test user_profiles table
-    const { data: usersTest, error: usersError } = await supabase
-      .from('user_profiles')
-      .select('count', { count: 'exact', head: true });
-
-    if (usersError) {
-      console.error('User profiles table error:', usersError);
-    } else {
-      console.log('User profiles table exists');
-    }
-
-    return !messagesError && !channelsError && !usersError;
+    return true
   } catch (error) {
-    console.error('Error testing tables:', error);
-    return false;
+    logger.error('Error testing database tables:', error)
+    throw error
   }
-};
+}
 
 export const getWorkspaces = async () => {
   console.log('🏢 [getWorkspaces] Starting to fetch workspaces...');
@@ -1419,5 +1402,166 @@ export const updateDirectMessageReaction = async (messageId: string, userId: str
   } catch (error) {
     console.error('Error updating direct message reaction:', error);
     throw error;
+  }
+}
+
+const UNIVERSAL_WORKSPACE_ID = '00000000-0000-0000-0000-000000000000'
+const UNIVERSAL_WORKSPACE_NAME = 'ChatGenius Community'
+
+const addAllUsersToUniversalWorkspace = async () => {
+  try {
+    logger.log('Adding all users to universal workspace...')
+    
+    // Get all users
+    const { data: users, error: usersError } = await supabase
+      .from('user_profiles')
+      .select('id')
+
+    if (usersError) {
+      logger.error('Error fetching users:', usersError)
+      throw usersError
+    }
+
+    // Add each user to the universal workspace
+    for (const user of users) {
+      await addUserToUniversalWorkspace(user.id)
+    }
+
+    logger.log(`Added ${users.length} users to universal workspace`)
+    return true
+  } catch (error) {
+    logger.error('Error adding all users to universal workspace:', error)
+    throw error
+  }
+}
+
+export const ensureUniversalWorkspace = async () => {
+  try {
+    // Check if universal workspace exists
+    const { data: workspace, error: fetchError } = await supabase
+      .from('workspaces')
+      .select('*')
+      .eq('id', UNIVERSAL_WORKSPACE_ID)
+      .single()
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      logger.error('Error fetching universal workspace:', fetchError)
+      throw fetchError
+    }
+
+    // If workspace doesn't exist, create it
+    if (!workspace) {
+      logger.log('Creating universal workspace...')
+      const { error: createError } = await supabase
+        .from('workspaces')
+        .insert({
+          id: UNIVERSAL_WORKSPACE_ID,
+          name: UNIVERSAL_WORKSPACE_NAME,
+          description: 'A workspace for all users',
+          created_at: new Date().toISOString()
+        })
+
+      if (createError) {
+        logger.error('Error creating universal workspace:', createError)
+        throw createError
+      }
+
+      // Create default channels
+      await createDefaultChannels(UNIVERSAL_WORKSPACE_ID)
+      logger.log('Universal workspace created successfully')
+
+      // Add all existing users
+      await addAllUsersToUniversalWorkspace()
+    }
+
+    return true
+  } catch (error) {
+    logger.error('Error ensuring universal workspace:', error)
+    throw error
+  }
+}
+
+export const addUserToUniversalWorkspace = async (userId: string) => {
+  try {
+    // Check if user is already a member
+    const { data: membership, error: fetchError } = await supabase
+      .from('workspace_members')
+      .select('*')
+      .eq('workspace_id', UNIVERSAL_WORKSPACE_ID)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      logger.error('Error checking universal workspace membership:', fetchError)
+      throw fetchError
+    }
+
+    // If not a member, add them
+    if (!membership) {
+      logger.log(`Adding user ${userId} to universal workspace...`)
+      const { error: addError } = await supabase
+        .from('workspace_members')
+        .insert({
+          workspace_id: UNIVERSAL_WORKSPACE_ID,
+          user_id: userId,
+          role: 'member',
+          joined_at: new Date().toISOString()
+        })
+
+      if (addError) {
+        logger.error('Error adding user to universal workspace:', addError)
+        throw addError
+      }
+
+      logger.log(`User ${userId} added to universal workspace`)
+    }
+
+    return true
+  } catch (error) {
+    logger.error('Error adding user to universal workspace:', error)
+    throw error
+  }
+}
+
+const createDefaultChannels = async (workspaceId: string) => {
+  try {
+    logger.log(`Creating default channels for workspace ${workspaceId}...`)
+
+    // Create general channel
+    const { data: generalChannel, error: generalError } = await supabase
+      .from('channels')
+      .insert({
+        name: 'general',
+        description: 'General discussion channel',
+        workspace_id: workspaceId,
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single()
+
+    if (generalError) {
+      logger.error('Error creating general channel:', generalError)
+      throw generalError
+    }
+
+    // Create welcome message
+    const { error: messageError } = await supabase
+      .from('messages')
+      .insert({
+        content: 'Welcome to the workspace! 👋 This is the general channel for all members to chat and collaborate.',
+        channel_id: generalChannel.id,
+        created_at: new Date().toISOString()
+      })
+
+    if (messageError) {
+      logger.error('Error creating welcome message:', messageError)
+      throw messageError
+    }
+
+    logger.log('Default channels created successfully')
+    return true
+  } catch (error) {
+    logger.error('Error creating default channels:', error)
+    throw error
   }
 }

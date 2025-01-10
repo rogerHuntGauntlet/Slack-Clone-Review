@@ -71,7 +71,7 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
   onToggleFavorite,
 }) => {
   const [searchTerm, setSearchTerm] = useState('')
-  const [isCreating, setIsCreating] = useState(false)
+  const [isCreating, setIsCreating] = useState(workspaces.length === 0)
   const [isLoading, setIsLoading] = useState(false)
 
   const filteredWorkspaces = workspaces.filter((workspace) =>
@@ -102,48 +102,90 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
             animate={{ opacity: 1, y: 0 }}
             className="text-2xl font-bold text-gray-900 dark:text-white mb-2"
           >
-            Your Workspaces
+            {workspaces.length === 0 ? 'Create Your First Workspace' : 'Your Workspaces'}
           </motion.h1>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-              <input
-                type="text"
-                placeholder="Search workspaces..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12 pr-4 py-2 bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent dark:text-white transition-all duration-200"
-              />
+          {workspaces.length > 0 && (
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="text"
+                  placeholder="Search workspaces..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-12 pr-4 py-2 bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent dark:text-white transition-all duration-200"
+                />
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => setIsCreating(true)}
+                className="px-6 py-2 bg-gradient-to-r from-indigo-500 to-pink-500 text-white rounded-lg font-medium hover:opacity-90 focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 flex items-center justify-center gap-2"
+              >
+                <Plus size={18} />
+                New Workspace
+              </motion.button>
             </div>
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => setIsCreating(true)}
-              className="px-6 py-2 bg-gradient-to-r from-indigo-500 to-pink-500 text-white rounded-lg font-medium hover:opacity-90 focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 flex items-center justify-center gap-2"
-            >
-              <Plus size={18} />
-              New Workspace
-            </motion.button>
-          </div>
+          )}
         </div>
         
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Favorites Section */}
-          <AnimatePresence>
-            {favoriteWorkspaces.length > 0 && (
-              <motion.section
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="mb-8"
-              >
-                <h2 className="text-base font-medium mb-3 text-gray-900 dark:text-white flex items-center gap-2 sticky top-0 bg-white dark:bg-gray-800 py-2">
-                  <Star className="fill-yellow-400 text-yellow-400" size={18} />
-                  <span>Favorites</span>
+          {workspaces.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="bg-gradient-to-r from-indigo-500/10 to-pink-500/10 p-8 rounded-2xl mb-6">
+                <Folder className="h-16 w-16 text-indigo-500 mx-auto mb-4" />
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                  Welcome to ChatGenius!
                 </h2>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                  Get started by creating your first workspace. A workspace is where you and your team can collaborate, chat, and work together.
+                </p>
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  onClick={() => setIsCreating(true)}
+                  className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-pink-500 text-white rounded-lg font-medium hover:opacity-90 focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 flex items-center justify-center gap-2 mx-auto"
+                >
+                  <Plus size={20} />
+                  Create Your First Workspace
+                </motion.button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Favorites Section */}
+              <AnimatePresence>
+                {favoriteWorkspaces.length > 0 && (
+                  <motion.section
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="mb-8"
+                  >
+                    <h2 className="text-base font-medium mb-3 text-gray-900 dark:text-white flex items-center gap-2 sticky top-0 bg-white dark:bg-gray-800 py-2">
+                      <Star className="fill-yellow-400 text-yellow-400" size={18} />
+                      <span>Favorites</span>
+                    </h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {favoriteWorkspaces.map((workspace, index) => (
+                        <WorkspaceCard
+                          key={workspace.id}
+                          workspace={workspace}
+                          onSelect={onSelectWorkspace}
+                          onToggleFavorite={onToggleFavorite}
+                          index={index}
+                        />
+                      ))}
+                    </div>
+                  </motion.section>
+                )}
+              </AnimatePresence>
+
+              {/* All Workspaces */}
+              <section>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {favoriteWorkspaces.map((workspace, index) => (
+                  {filteredWorkspaces.map((workspace, index) => (
                     <WorkspaceCard
                       key={workspace.id}
                       workspace={workspace}
@@ -153,24 +195,9 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
                     />
                   ))}
                 </div>
-              </motion.section>
-            )}
-          </AnimatePresence>
-
-          {/* All Workspaces */}
-          <section>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredWorkspaces.map((workspace, index) => (
-                <WorkspaceCard
-                  key={workspace.id}
-                  workspace={workspace}
-                  onSelect={onSelectWorkspace}
-                  onToggleFavorite={onToggleFavorite}
-                  index={index}
-                />
-              ))}
-            </div>
-          </section>
+              </section>
+            </>
+          )}
         </div>
 
         {/* Create Workspace Modal */}
@@ -181,7 +208,7 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-              onClick={() => !isLoading && setIsCreating(false)}
+              onClick={() => !isLoading && workspaces.length > 0 && setIsCreating(false)}
             >
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
@@ -190,7 +217,9 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
                 onClick={(e) => e.stopPropagation()}
                 className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md"
               >
-                <h3 className="text-2xl font-bold mb-6 bg-gradient-to-r from-indigo-500 to-pink-500 bg-clip-text text-transparent">Create Workspace</h3>
+                <h3 className="text-2xl font-bold mb-6 bg-gradient-to-r from-indigo-500 to-pink-500 bg-clip-text text-transparent">
+                  {workspaces.length === 0 ? 'Create Your First Workspace' : 'Create New Workspace'}
+                </h3>
                 <form onSubmit={handleCreateSubmit} className="space-y-5">
                   <div className="space-y-1">
                     <label htmlFor="workspace-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -209,14 +238,16 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
                     />
                   </div>
                   <div className="flex gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsCreating(false)}
-                      disabled={isLoading}
-                      className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Cancel
-                    </button>
+                    {workspaces.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsCreating(false)}
+                        disabled={isLoading}
+                        className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Cancel
+                      </button>
+                    )}
                     <motion.button
                       whileHover={{ scale: isLoading ? 1 : 1.01 }}
                       whileTap={{ scale: isLoading ? 1 : 0.99 }}
