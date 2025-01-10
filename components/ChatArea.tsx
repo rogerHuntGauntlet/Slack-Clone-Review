@@ -235,29 +235,48 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           async (payload: {
             new: {
               id: string;
-              reactions: Record<string, string[]>;
+              channel_id: string;
             };
           }) => {
             console.log('Realtime: Message updated:', payload);
             
+            // Fetch the complete updated message
+            const { data: updatedMessage, error } = await supabase
+              .from('messages')
+              .select(`
+                *,
+                user:user_profiles!user_id (
+                  id,
+                  username,
+                  avatar_url
+                )
+              `)
+              .eq('id', payload.new.id)
+              .single();
+
+            if (error) {
+              console.error('Error fetching updated message:', error);
+              return;
+            }
+
             // Update the message in state
             setMessages(prev => prev.map(msg => 
               msg.id === payload.new.id 
-                ? { ...msg, reactions: payload.new.reactions }
+                ? { ...msg, ...updatedMessage }
                 : msg
             ));
 
             // Also update thread messages if necessary
             setThreadMessages(prev => prev.map(msg => 
               msg.id === payload.new.id 
-                ? { ...msg, reactions: payload.new.reactions }
+                ? { ...msg, ...updatedMessage }
                 : msg
             ));
 
-            // Update thread message if it's the one being reacted to
+            // Update thread message if it's the one being updated
             if (threadMessage?.id === payload.new.id) {
               setThreadMessage(prev => 
-                prev ? { ...prev, reactions: payload.new.reactions } : null
+                prev ? { ...prev, ...updatedMessage } : null
               );
             }
           }

@@ -223,10 +223,13 @@ const Message: React.FC<MessageProps> = ({
             {onReplyClick && (
               <button
                 onClick={() => onReplyClick(message)}
-                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 flex items-center gap-1"
                 title="Reply in thread"
               >
                 <MessageSquare size={20} />
+                {message.reply_count > 0 && (
+                  <span className="text-xs font-medium">{message.reply_count}</span>
+                )}
               </button>
             )}
           </div>

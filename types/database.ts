@@ -13,7 +13,7 @@ export interface MessageType {
     avatar_url: string | null;
   };
   replies?: MessageType[];
-  reply_count?: number;
+  reply_count: number;
   reactions?: { [emoji: string]: string[] };
 }
 
