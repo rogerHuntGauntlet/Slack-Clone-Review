@@ -88,7 +88,7 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
 
       {/* Workspace Grid */}
       <main className="flex-grow px-8 py-4">
-        <h2 className="text-2xl font-bold mb-4 text-gray-100">All Workspaces</h2>
+        <h2 className="text-2xl font-bold mb-4 text-gray-100"></h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           {filteredWorkspaces.map((workspace) => (
             <div

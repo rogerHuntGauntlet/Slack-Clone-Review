@@ -1,26 +1,13 @@
 'use client'
 
-import { FC, useState, useEffect, useRef, ChangeEvent } from 'react'
-import { Send, Paperclip, Smile, X, Image, FileText, Film, Music, Camera } from 'lucide-react'
-import Message from './Message'
-import ScrollToTopButton from './ScrollToTopButton'
-import { supabase } from '../lib/supabase'
-import ChatHeader from './ChatHeader'
-import debounce from 'lodash/debounce'
-import type { MessageType } from '../types/database'
-import { useTheme } from 'next-themes'
-import ReplyModal from './ReplyModal'
-import { sendReply } from '../lib/supabase'
-
-const EMOJI_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉'];
-
-interface SearchResult {
-  channelId: string;
-  messageId: string;
-  content: string;
-  sender: string;
-  timestamp: string;
-}
+import React, { useState, useEffect, useRef } from 'react';
+import { useSession } from '@supabase/auth-helpers-react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { toast } from 'react-hot-toast';
+import { X, FileText } from 'lucide-react';
+import type { MessageType, FileAttachment } from '../types/database';
+import Message from './Message';
+import ReplyModal from './ReplyModal';
 
 interface ChatAreaProps {
   activeWorkspace: string;
@@ -30,584 +17,615 @@ interface ChatAreaProps {
   userWorkspaces: string[];
 }
 
-const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUser, onSwitchChannel, userWorkspaces }) => {
-  const [messages, setMessages] = useState<MessageType[]>([])
-  const [newMessage, setNewMessage] = useState('')
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
-  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [channelName, setChannelName] = useState('')
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
-  const [isTyping, setIsTyping] = useState(false)
-  const [replyingTo, setReplyingTo] = useState<MessageType | null>(null)
-  const [replyModalOpen, setReplyModalOpen] = useState(false);
+interface MessageWithUserProfile extends MessageType {
+  user_profiles: {
+    id: string;
+    username: string;
+    avatar_url: string;
+  };
+}
+
+interface StorageBucket {
+  id: string;
+  name: string;
+  owner: string;
+  created_at: string;
+  updated_at: string;
+  public: boolean;
+}
+
+const ChatArea: React.FC<ChatAreaProps> = ({ 
+  activeWorkspace,
+  activeChannel,
+  currentUser,
+  onSwitchChannel,
+  userWorkspaces 
+}) => {
+  const [messages, setMessages] = useState<MessageType[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [newMessage, setNewMessage] = useState('');
+  const [threadMessage, setThreadMessage] = useState<MessageType | null>(null);
+  const [threadMessages, setThreadMessages] = useState<MessageType[]>([]);
+  const [newThreadMessage, setNewThreadMessage] = useState('');
+  const [fileAttachments, setFileAttachments] = useState<FileAttachment[]>([]);
+  const [threadFileAttachments, setThreadFileAttachments] = useState<FileAttachment[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<MessageType | null>(null);
-  
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const chatContainerRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const cameraInputRef = useRef<HTMLInputElement>(null)
-  const documentInputRef = useRef<HTMLInputElement>(null)
-  const attachmentMenuRef = useRef<HTMLDivElement>(null)
-  const emojiPickerRef = useRef<HTMLDivElement>(null)
-  const { theme: appTheme } = useTheme()
+  const [showReplyModal, setShowReplyModal] = useState(false);
+  const [showThreadView, setShowThreadView] = useState(false);
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const supabase = createClientComponentClient();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const threadMessagesEndRef = useRef<HTMLDivElement>(null);
+  const mainChatRef = useRef<HTMLDivElement>(null);
+  const threadChatRef = useRef<HTMLDivElement>(null);
 
-  const debouncedFetchMessages = useRef(
-    debounce(() => {
-      fetchMessages();
-    }, 5000)
-  ).current;
-
+  // Scroll to bottom when messages change and shouldScrollToBottom is true
   useEffect(() => {
-    fetchMessages();
-    fetchChannelName();
-    const subscription = supabase
-      .channel('public:messages')
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'messages' }, 
-        async (payload: { new: MessageType }) => {
-          debouncedFetchMessages();
+    if (shouldScrollToBottom && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, shouldScrollToBottom]);
+
+  // Scroll to bottom when thread messages change
+  useEffect(() => {
+    if (threadMessagesEndRef.current) {
+      threadMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [threadMessages]);
+
+  // Check if user is near bottom when scrolling
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const div = e.currentTarget;
+    const isNearBottom = div.scrollHeight - div.scrollTop - div.clientHeight < 100;
+    setIsNearBottom(isNearBottom);
+    setShouldScrollToBottom(isNearBottom);
+  };
+
+  // File upload handler
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isThreadMessage: boolean = false) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    const newAttachments: FileAttachment[] = [];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+
+    try {
+      // Process files
+      for (const file of Array.from(files)) {
+        if (file.size > maxSize) {
+          toast.error(`${file.name} is too large (max 5MB)`);
+          continue;
         }
-      )
-      .subscribe()
 
-    return () => {
-      subscription.unsubscribe();
-      debouncedFetchMessages.cancel();
-    }
-  }, [activeChannel]);
+        try {
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
 
-  useEffect(() => {
-    const savedDraft = localStorage.getItem(`draft_${activeChannel}`)
-    if (savedDraft) {
-      setNewMessage(savedDraft)
-    }
-  }, [activeChannel])
+          const { error: uploadError, data } = await supabase.storage
+            .from('chat_attachments')
+            .upload(fileName, file, {
+              cacheControl: '3600',
+              upsert: true
+            });
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(event.target as Node)) {
-        setShowAttachmentMenu(false)
-      }
-    }
+          if (uploadError) {
+            console.error('Upload error:', uploadError);
+            toast.error(`Failed to add ${file.name}`);
+            continue;
+          }
 
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [])
+          const { data: { publicUrl } } = supabase.storage
+            .from('chat_attachments')
+            .getPublicUrl(fileName);
 
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage && !lastMessage.parent_id) {
-        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-      }
-    }
-  }, [messages]);
-
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => {
-        setError(null)
-      }, 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [error])
-
-  const fetchMessages = async () => {
-    try {
-      console.log('Fetching messages for channel:', activeChannel)
-      const { data: messages, error } = await supabase
-        .from('messages')
-        .select(`
-          *,
-          user:users!messages_user_id_fkey (
-            id,
-            username,
-            avatar_url
-          )
-        `)
-        .eq('channel', activeChannel || '')
-        .is('is_direct_message', false)
-        .order('created_at', { ascending: true })
-
-      if (error) {
-        console.error('Supabase error:', error)
-        throw error
-      }
-
-      console.log('Raw messages:', messages)
-
-      // Transform the messages
-      const transformedMessages = messages.map((message: MessageType) => ({
-        ...message,
-        user: message.user || { 
-          id: message.user_id,
-          username: 'Unknown User',
-          avatar_url: null
-        }
-      }))
-
-      console.log('Transformed messages:', transformedMessages)
-      setMessages(transformedMessages)
-    } catch (error) {
-      console.error('Error fetching messages:', error)
-      setError('Failed to load messages. Please try again.')
-    }
-  }
-
-  const fetchChannelName = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('channels')
-        .select('name')
-        .eq('id', activeChannel)
-        .single()
-
-      if (error) throw error;
-      setChannelName(data.name)
-    } catch (err) {
-      console.error('Error fetching channel name:', err)
-      setError('Failed to load channel name. Please try again.')
-    }
-  }
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newMessage.trim() && selectedFiles.length === 0) return
-
-    try {
-      // Upload files first if any
-      const fileAttachments = await Promise.all(
-        selectedFiles.map(async (file) => {
-          const fileUrl = await uploadFile(file)
-          return {
+          newAttachments.push({
             file_name: file.name,
             file_type: file.type,
-            file_url: fileUrl
-          }
-        })
-      )
+            file_url: publicUrl
+          });
 
-      // Send message with file attachments
-      const { data: message, error } = await supabase
-        .from('messages')
-        .insert([
+          toast.success(`Added ${file.name}`);
+        } catch (error) {
+          console.error('Upload error:', error);
+          toast.error(`Failed to add ${file.name}`);
+        }
+      }
+
+      if (newAttachments.length > 0) {
+        if (isThreadMessage) {
+          setThreadFileAttachments(prev => [...prev, ...newAttachments]);
+        } else {
+          setFileAttachments(prev => [...prev, ...newAttachments]);
+        }
+      }
+    } catch (error) {
+      console.error('Error handling file upload:', error);
+      toast.error('Failed to upload files');
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  console.log('ChatArea render - Current state:', {
+    channelId: activeChannel,
+    messageCount: messages.length,
+    loading,
+    currentUser,
+    threadView: showThreadView
+  });
+
+  useEffect(() => {
+    if (activeChannel) {
+      console.log('ChatArea: Channel ID changed, setting up...', activeChannel);
+      fetchMessages();
+
+      // Set up realtime subscription
+      const channel = supabase
+        .channel(`messages:${activeChannel}`)
+        .on(
+          'postgres_changes',
           {
-            content: newMessage.trim(),
-            channel: activeChannel,
-            user_id: currentUser.id,
-            file_attachments: fileAttachments.length > 0 ? fileAttachments : null
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `channel_id=eq.${activeChannel}`
+          },
+          async (payload: {
+            new: {
+              id: string;
+              channel_id: string;
+              content: string;
+              created_at: string;
+              user_id: string;
+              parent_id: string | null;
+            };
+          }) => {
+            console.log('Realtime: New message received:', payload);
+            
+            // Fetch the complete message with user data
+            const { data: newMessage, error } = await supabase
+              .from('messages')
+              .select(`
+                *,
+                user_profiles!user_id (
+                  id,
+                  username,
+                  avatar_url
+                )
+              `)
+              .eq('id', payload.new.id)
+              .single();
+
+            if (error) {
+              console.error('Realtime: Error fetching new message details:', error);
+              return;
+            }
+
+            if (newMessage) {
+              console.log('Realtime: Adding new message to state:', newMessage);
+              // Transform the new message to match the expected format
+              const transformedMessage = {
+                ...(newMessage as MessageWithUserProfile),
+                user: newMessage.user_profiles
+              };
+
+              // If it's a reply and we're viewing that thread, add it to thread messages
+              if (transformedMessage.parent_id && threadMessage?.id === transformedMessage.parent_id) {
+                setThreadMessages(prev => [...prev, transformedMessage]);
+              }
+              // If it's a main message or we're not viewing its thread, add it to main messages
+              else if (!transformedMessage.parent_id) {
+                setMessages(prev => [...prev, transformedMessage]);
+              }
+            }
           }
-        ])
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages',
+            filter: `channel_id=eq.${activeChannel}`
+          },
+          async (payload: {
+            new: {
+              id: string;
+              reactions: Record<string, string[]>;
+            };
+          }) => {
+            console.log('Realtime: Message updated:', payload);
+            
+            // Update the message in state
+            setMessages(prev => prev.map(msg => 
+              msg.id === payload.new.id 
+                ? { ...msg, reactions: payload.new.reactions }
+                : msg
+            ));
+
+            // Also update thread messages if necessary
+            setThreadMessages(prev => prev.map(msg => 
+              msg.id === payload.new.id 
+                ? { ...msg, reactions: payload.new.reactions }
+                : msg
+            ));
+
+            // Update thread message if it's the one being reacted to
+            if (threadMessage?.id === payload.new.id) {
+              setThreadMessage(prev => 
+                prev ? { ...prev, reactions: payload.new.reactions } : null
+              );
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        console.log('ChatArea: Cleaning up subscription for channel:', activeChannel);
+        channel.unsubscribe();
+      };
+    }
+  }, [activeChannel, threadMessage?.id]);
+
+  const fetchMessages = async () => {
+    if (!activeChannel) {
+      console.log('fetchMessages: No channel ID provided');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      const query = supabase
+        .from('messages')
         .select(`
           *,
-          user:users!messages_user_id_fkey (
+          user_profiles!user_id (
             id,
             username,
             avatar_url
           )
         `)
-        .single()
+        .eq('channel_id', activeChannel)
+        .is('parent_id', null)  // Only fetch main messages, not replies
+        .order('created_at', { ascending: true });
 
-      if (error) throw error
+      const { data, error } = await query;
 
-      // Clear input and files
-      setNewMessage('')
-      setSelectedFiles([])
-      localStorage.removeItem(`draft_${activeChannel}`)
-
-      // Scroll to bottom
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    } catch (error) {
-      console.error('Error sending message:', error)
-      setError('Failed to send message. Please try again.')
-    }
-  }
-
-  const handleReply = async (parentId: string, content: string) => {
-    if (content && currentUser) {
-      try {
-        const sentReply = await sendReply(activeChannel, currentUser.id, parentId, content)
-        setMessages(prevMessages => prevMessages.map(message => 
-          message.id === parentId 
-            ? { ...message, replies: [...(message.replies || []), sentReply] }
-            : message
-        ))
-        setError(null)
-      } catch (err) {
-        console.error('Error sending reply:', err)
-        setError('Failed to send reply. Please try again.')
+      if (error) {
+        console.error('Error fetching messages:', error);
+        toast.error('Failed to load messages');
+        return;
       }
-    }
-  }
 
-  const handleSearchResult = (result: SearchResult) => {
-    setSearchResults(prevResults => [...prevResults, result]);
-  };
+      // Transform the data to match the expected format
+      const transformedData = (data as MessageWithUserProfile[] || []).map(message => ({
+        ...message,
+        user: message.user_profiles
+      }));
 
-  const handleSelectSearchResult = (result: SearchResult) => {
-    if (result.channelId !== activeChannel) {
-      onSwitchChannel(result.channelId);
-    }
-    
-    setTimeout(() => {
-      const messageElement = document.getElementById(`message-${result.messageId}`);
-      if (messageElement) {
-        messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        messageElement.classList.add('bg-yellow-100', 'dark:bg-yellow-900');
-        setTimeout(() => {
-          messageElement.classList.remove('bg-yellow-100', 'dark:bg-yellow-900');
-        }, 3000);
-      }
-    }, 100);
-
-    setSearchResults([]);
-  };
-
-  const handleFileInput = (e: ChangeEvent<HTMLInputElement>, type: 'image' | 'camera' | 'document') => {
-    const files = Array.from(e.target.files || [])
-    const validFiles = files.filter(file => {
-      if (type === 'image') return file.type.startsWith('image/')
-      if (type === 'camera') return file.type.startsWith('image/')
-      if (type === 'document') return file.type === 'application/pdf' || file.type === 'text/plain'
-      return false
-    })
-    
-    setSelectedFiles(prev => [...prev, ...validFiles])
-    e.target.value = '' // Reset input
-  }
-
-  const uploadFile = async (file: File): Promise<string> => {
-    const fileExt = file.name.split('.').pop()
-    const fileName = `${Date.now()}.${fileExt}`
-    const { data, error } = await supabase.storage
-      .from('message_attachments')
-      .upload(fileName, file)
-
-    if (error) {
-      console.error('Error uploading file:', error)
-      throw error
-    }
-
-    const { data: publicUrlData } = supabase.storage
-      .from('message_attachments')
-      .getPublicUrl(fileName)
-
-    return publicUrlData.publicUrl
-  }
-
-  const removeFile = (index: number) => {
-    setSelectedFiles(prevFiles => prevFiles.filter((_, i) => i !== index))
-  }
-
-  const handleTextAreaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value
-    setNewMessage(value)
-    setIsTyping(true)
-    debouncedSaveDraft(value)
-    debouncedStopTyping()
-  }
-
-  const debouncedSaveDraft = debounce((value: string) => {
-    localStorage.setItem(`draft_${activeChannel}`, value)
-  }, 500)
-
-  const debouncedStopTyping = debounce(() => {
-    setIsTyping(false)
-  }, 1000)
-
-  const getFileIcon = (fileType: string) => {
-    if (fileType.startsWith('image/')) return <Image size={24} />;
-    if (fileType === 'application/pdf' || fileType === 'text/plain') return <FileText size={24} />;
-    if (fileType.startsWith('video/')) return <Film size={24} />;
-    if (fileType.startsWith('audio/')) return <Music size={24} />;
-    return <Paperclip size={24} />;
-  }
-
-  const handleReplyClick = (message: MessageType) => {
-    setSelectedMessage(message);
-    setReplyModalOpen(true);
-  };
-
-  const handleReplySubmit = async (parentId: string, content: string) => {
-    try {
-      await sendReply(activeChannel, currentUser.id, parentId, content);
-      // Refresh messages after reply
-      fetchMessages();
+      console.log('Fetched messages:', transformedData);
+      setMessages(transformedData);
     } catch (error) {
-      console.error('Error sending reply:', error);
+      console.error('Error in fetchMessages:', error);
+      toast.error('Failed to load messages');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleReaction = async (messageId: string, reaction: string) => {
-    const messageToUpdate = messages.find(m => m.id === messageId);
-    if (!messageToUpdate) return;
-
+  const fetchThreadMessages = async (parentId: string) => {
     try {
-      const currentReactions = messageToUpdate.reactions || {};
-      const userReactions = currentReactions[reaction] || [];
-      const hasReacted = userReactions.includes(currentUser.id);
-
-      if (hasReacted) {
-        // Remove reaction
-        const updatedReactions = {
-          ...currentReactions,
-          [reaction]: userReactions.filter(id => id !== currentUser.id)
-        };
-
-        await supabase
-          .from('messages')
-          .update({ reactions: updatedReactions })
-          .eq('id', messageId);
-
-        // Update local state
-        setMessages(prevMessages => 
-          prevMessages.map(m => 
-            m.id === messageId 
-              ? {
-                  ...m,
-                  reactions: updatedReactions
-                }
-              : m
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          *,
+          user_profiles!user_id (
+            id,
+            username,
+            avatar_url
           )
-        );
+        `)
+        .eq('parent_id', parentId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching thread messages:', error);
+        toast.error('Failed to load thread messages');
+        return;
+      }
+
+      // Transform the data to match the expected format
+      const transformedData = (data as MessageWithUserProfile[] || []).map(message => ({
+        ...message,
+        user: message.user_profiles
+      }));
+
+      setThreadMessages(transformedData);
+    } catch (error) {
+      console.error('Error in fetchThreadMessages:', error);
+      toast.error('Failed to load thread messages');
+    }
+  };
+
+  const handleSendMessage = async (e: React.FormEvent, isThreadMessage: boolean = false) => {
+    e.preventDefault();
+    const content = isThreadMessage ? newThreadMessage : newMessage;
+    const attachments = isThreadMessage ? threadFileAttachments : fileAttachments;
+
+    if (!content.trim() && attachments.length === 0) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          content: content.trim(),
+          channel_id: activeChannel,
+          user_id: currentUser.id,
+          file_attachments: attachments,
+          parent_id: isThreadMessage ? threadMessage?.id : null
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error sending message:', error);
+        toast.error('Failed to send message');
+        return;
+      }
+
+      console.log('Message sent:', data);
+      if (isThreadMessage) {
+        setNewThreadMessage('');
+        setThreadFileAttachments([]);
       } else {
-        // Add reaction
-        const updatedReactions = {
-          ...currentReactions,
-          [reaction]: [...userReactions, currentUser.id]
-        };
-
-        await supabase
-          .from('messages')
-          .update({ reactions: updatedReactions })
-          .eq('id', messageId);
-
-        // Update local state
-        setMessages(prevMessages => 
-          prevMessages.map(m => 
-            m.id === messageId 
-              ? {
-                  ...m,
-                  reactions: updatedReactions
-                }
-              : m
-          )
-        );
+        setNewMessage('');
+        setFileAttachments([]);
       }
-      debouncedFetchMessages();
     } catch (error) {
-      console.error('Error handling reaction:', error);
+      console.error('Error in handleSendMessage:', error);
+      toast.error('Failed to send message');
     }
+  };
+
+  const handleSendReply = async (content: string) => {
+    if (!selectedMessage) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          content,
+          channel_id: activeChannel,
+          user_id: currentUser.id,
+          parent_id: selectedMessage.id
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error sending reply:', error);
+        toast.error('Failed to send reply');
+        return;
+      }
+
+      console.log('Reply sent:', data);
+      setShowReplyModal(false);
+      setSelectedMessage(null);
+    } catch (error) {
+      console.error('Error in handleSendReply:', error);
+      toast.error('Failed to send reply');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent, isThreadMessage: boolean = false) => {
+    e.preventDefault();
+    await handleSendMessage(e, isThreadMessage);
+  };
+
+  const handleKeyPress = async (e: React.KeyboardEvent<HTMLTextAreaElement>, isThreadMessage: boolean = false) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const content = isThreadMessage ? newThreadMessage : newMessage;
+      const attachments = isThreadMessage ? threadFileAttachments : fileAttachments;
+      if (!content.trim() && attachments.length === 0) return;
+      await handleSendMessage(e as any, isThreadMessage);
+    }
+  };
+
+  const handleThreadClick = async (message: MessageType) => {
+    setThreadMessage(message);
+    setShowThreadView(true);
+    await fetchThreadMessages(message.id);
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-white dark:bg-gray-900 transition-all duration-300">
-      <ChatHeader
-        channelName={channelName}
-        isDM={false}
-        onSearchResult={handleSearchResult}
-        userWorkspaces={userWorkspaces}
-      />
-      
-      {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mx-2" role="alert">
-          <strong className="font-bold">Error:</strong>
-          <span className="block sm:inline"> {error}</span>
+    <div className="flex h-full">
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col h-full min-w-0">
+        <div 
+          className="flex-1 overflow-y-auto p-4" 
+          ref={mainChatRef}
+          onScroll={handleScroll}
+        >
+          {loading ? (
+            <div className="flex justify-center items-center h-full">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white"></div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {messages.map((message) => (
+                <Message
+                  key={message.id}
+                  message={message}
+                  currentUser={currentUser}
+                  onReplyClick={handleThreadClick}
+                />
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
         </div>
-      )}
 
-      {searchResults.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 w-full max-w-[calc(100%-1rem)] mx-auto">
-          <h3 className="text-lg font-semibold mb-2">Search Results:</h3>
-          <ul className="flex-grow overflow-y-auto space-y-1 pr-2 custom-scrollbar">
-            {searchResults.map((result, index) => (
-              <li
-                key={index}
-                onClick={() => handleSelectSearchResult(result)}
-                className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded"
+        {/* Message Input */}
+        <div className="px-4 pb-4 pt-2">
+          <form onSubmit={(e) => handleSubmit(e, false)} className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 border dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-600 transition-colors">
+              <label className={`cursor-pointer p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-l ${isUploading ? 'animate-pulse' : ''}`}>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleFileUpload(e, false)}
+                  disabled={isUploading}
+                />
+                <FileText 
+                  size={20} 
+                  className={`${fileAttachments.length > 0 ? 'text-blue-500' : isUploading ? 'text-yellow-500' : 'text-gray-400'}`} 
+                />
+              </label>
+              <textarea
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={(e) => handleKeyPress(e, false)}
+                placeholder={isUploading ? "Uploading files..." : "Message #general"}
+                className="flex-1 p-2 bg-transparent focus:outline-none min-h-[44px] max-h-[200px] resize-none"
+                rows={1}
+              />
+              <button
+                type="submit"
+                className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50 mr-1"
+                disabled={isUploading || (!newMessage.trim() && fileAttachments.length === 0)}
               >
-                <p className="font-semibold truncate">{result.sender} in #{channelName}</p>
-                <p className="text-sm text-gray-600 dark:text-gray-400 truncate">{result.content}</p>
-                <p className="text-xs text-gray-500">{result.timestamp}</p>
-              </li>
-            ))}
-          </ul>
+                <svg viewBox="0 0 20 20" className="w-5 h-5 rotate-90 fill-current">
+                  <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11h2v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path>
+                </svg>
+              </button>
+            </div>
+            {fileAttachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-1">
+                {fileAttachments.map((file, index) => (
+                  <div key={index} className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded px-2 py-1 text-sm">
+                    <span className="truncate max-w-[200px]">{file.file_name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFileAttachments(prev => prev.filter((_, i) => i !== index))}
+                      className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                      disabled={isUploading}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </form>
         </div>
-      )}
-
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-2 custom-scrollbar w-full max-w-[calc(100%-0.5rem)] mx-auto space-y-px">
-        {messages.map((message, index) => (
-          <Message
-            key={message.id}
-            message={message}
-            currentUser={currentUser}
-            onReplyClick={handleReplyClick}
-            onReactionSelect={handleReaction}
-            className={index % 2 === 0 ? 'bg-gray-50 dark:bg-gray-800/50' : 'bg-gray-50 dark:bg-gray-800/50'}
-          />
-        ))}
-        <div ref={messagesEndRef} />
       </div>
 
-      <div className="relative w-full max-w-[calc(100%-0.5rem)] mx-auto">
-        <form onSubmit={handleSendMessage} className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
-          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileInput(e, 'image')} />
-          <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleFileInput(e, 'camera')} />
-          <input type="file" ref={documentInputRef} className="hidden" accept=".pdf,.txt" onChange={(e) => handleFileInput(e, 'document')} />
+      {/* Thread View */}
+      {showThreadView && threadMessage && (
+        <div className="w-96 border-l dark:border-gray-700 flex flex-col h-full">
+          <div className="p-4 border-b dark:border-gray-700 flex items-center gap-2">
+            <h3 className="text-lg font-semibold">Thread</h3>
+            <button
+              onClick={() => {
+                setShowThreadView(false);
+                setThreadMessage(null);
+                setThreadMessages([]);
+                setNewThreadMessage('');
+                setThreadFileAttachments([]);
+              }}
+              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+            >
+              <X size={16} />
+            </button>
+          </div>
 
-          <div className="max-w-[95%] mx-auto">
-            <div className="relative flex flex-col rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm">
-              {selectedFiles.length > 0 && (
-                <div className="p-3 border-b border-gray-200 dark:border-gray-600 flex gap-2 flex-wrap">
-                  {selectedFiles.map((file, index) => (
-                    <div key={index} className="relative group">
-                      <div className="w-20 h-20 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden bg-gray-50 dark:bg-gray-800">
-                        {file.type.startsWith('image/') ? (
-                          <img src={URL.createObjectURL(file)} alt="Preview" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <FileText size={24} className="text-gray-400" />
-                          </div>
-                        )}
-                      </div>
+          <div 
+            className="flex-1 overflow-y-auto p-4" 
+            ref={threadChatRef}
+          >
+            <Message
+              message={threadMessage}
+              currentUser={currentUser}
+              isThreadView
+            />
+            <div className="mt-4 space-y-4">
+              {threadMessages.map((message) => (
+                <Message
+                  key={message.id}
+                  message={message}
+                  currentUser={currentUser}
+                  isThreadView
+                />
+              ))}
+              <div ref={threadMessagesEndRef} />
+            </div>
+          </div>
+
+          {/* Thread Reply Input */}
+          <div className="px-4 pb-4 pt-2">
+            <form onSubmit={(e) => handleSubmit(e, true)} className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 border dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-600 transition-colors">
+                <label className={`cursor-pointer p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-l ${isUploading ? 'animate-pulse' : ''}`}>
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleFileUpload(e, true)}
+                    disabled={isUploading}
+                  />
+                  <FileText 
+                    size={20} 
+                    className={`${threadFileAttachments.length > 0 ? 'text-blue-500' : isUploading ? 'text-yellow-500' : 'text-gray-400'}`} 
+                  />
+                </label>
+                <textarea
+                  value={newThreadMessage}
+                  onChange={(e) => setNewThreadMessage(e.target.value)}
+                  onKeyDown={(e) => handleKeyPress(e, true)}
+                  placeholder={isUploading ? "Uploading files..." : "Reply in thread..."}
+                  className="flex-1 p-2 bg-transparent focus:outline-none min-h-[44px] max-h-[200px] resize-none"
+                  rows={1}
+                />
+                <button
+                  type="submit"
+                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50 mr-1"
+                  disabled={isUploading || (!newThreadMessage.trim() && threadFileAttachments.length === 0)}
+                >
+                  <svg viewBox="0 0 20 20" className="w-5 h-5 rotate-90 fill-current">
+                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11h2v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path>
+                  </svg>
+                </button>
+              </div>
+              {threadFileAttachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {threadFileAttachments.map((file, index) => (
+                    <div key={index} className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded px-2 py-1 text-sm">
+                      <span className="truncate max-w-[200px]">{file.file_name}</span>
                       <button
                         type="button"
-                        onClick={() => removeFile(index)}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => setThreadFileAttachments(prev => prev.filter((_, i) => i !== index))}
+                        className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                        disabled={isUploading}
                       >
-                        <X size={12} />
+                        <X size={14} />
                       </button>
                     </div>
                   ))}
                 </div>
               )}
-
-              <div className="flex items-end p-2">
-                <div className="flex-1 relative">
-                  <textarea
-                    value={newMessage}
-                    onChange={(e) => handleTextAreaChange(e)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage(e);
-                      }
-                    }}
-                    placeholder="Send a message..."
-                    className="w-full p-2 pr-24 bg-transparent border-0 outline-none text-gray-900 dark:text-white resize-none min-h-[44px] max-h-[300px] text-sm whitespace-pre-wrap"
-                    rows={3}
-                    style={{
-                      height: newMessage.split('\n').length > 1 ? 'auto' : '44px',
-                      minHeight: '44px'
-                    }}
-                  />
-                  
-                  <div className="absolute right-2 bottom-2 flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    >
-                      <Smile size={20} />
-                    </button>
-                    <button
-                      type="button"
-                      className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors relative"
-                      onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-                    >
-                      <Paperclip size={20} />
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={!newMessage.trim() && selectedFiles.length === 0}
-                  className="ml-2 p-2 rounded-full bg-[#007a5a] hover:bg-[#148567] disabled:bg-gray-200 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-colors flex-shrink-0"
-                >
-                  <Send size={20} />
-                </button>
-              </div>
-            </div>
-
-            {showAttachmentMenu && (
-              <div 
-                className="absolute bottom-full right-12 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 py-2 min-w-[200px]"
-                ref={attachmentMenuRef}
-              >
-                <button
-                  type="button"
-                  className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm"
-                  onClick={() => {
-                    fileInputRef.current?.click();
-                    setShowAttachmentMenu(false);
-                  }}
-                >
-                  <Image size={18} />
-                  <span>Upload image</span>
-                </button>
-                <button
-                  type="button"
-                  className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm"
-                  onClick={() => {
-                    cameraInputRef.current?.click();
-                    setShowAttachmentMenu(false);
-                  }}
-                >
-                  <Camera size={18} />
-                  <span>Take photo</span>
-                </button>
-                <button
-                  type="button"
-                  className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm"
-                  onClick={() => {
-                    documentInputRef.current?.click();
-                    setShowAttachmentMenu(false);
-                  }}
-                >
-                  <FileText size={18} />
-                  <span>Upload document</span>
-                </button>
-              </div>
-            )}
-            {showEmojiPicker && (
-              <div 
-                className="absolute bottom-full right-12 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 p-2 z-50 grid grid-cols-5 gap-2"
-                ref={emojiPickerRef}
-              >
-                {EMOJI_OPTIONS.map((emoji, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      setNewMessage(prev => prev + emoji);
-                      setShowEmojiPicker(false);
-                    }}
-                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xl"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            )}
+            </form>
           </div>
-        </form>
-      </div>
-      <ScrollToTopButton />
-      {replyModalOpen && selectedMessage && (
-        <ReplyModal
-          isOpen={replyModalOpen}
-          onClose={() => setReplyModalOpen(false)}
-          parentMessage={selectedMessage}
-          onReply={handleReplySubmit}
-          currentUser={currentUser}
-        />
+        </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default ChatArea
+export default ChatArea;

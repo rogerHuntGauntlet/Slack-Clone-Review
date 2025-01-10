@@ -11,35 +11,29 @@ interface Workspace {
 interface WorkspaceManagerProps {
   activeWorkspace: string
   onWorkspaceSelect: (workspaceId: string) => void
-  user: { id: string }
 }
 
 export default function WorkspaceManager({ 
   activeWorkspace, 
-  onWorkspaceSelect, 
-  user 
+  onWorkspaceSelect
 }: WorkspaceManagerProps) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [joinWorkspaceId, setJoinWorkspaceId] = useState('')
 
   useEffect(() => {
-    if (user) {
-      fetchWorkspaces()
-    }
-  }, [user])
+    fetchWorkspaces()
+  }, [])
 
   const fetchWorkspaces = async () => {
-    if (user) {
-      const fetchedWorkspaces = await getWorkspaces(user.id)
-      setWorkspaces(fetchedWorkspaces)
-    }
+    const fetchedWorkspaces = await getWorkspaces()
+    setWorkspaces(fetchedWorkspaces)
   }
 
   const handleCreateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (newWorkspaceName && user) {
-      const result = await createWorkspace(newWorkspaceName, user.id)
+    if (newWorkspaceName) {
+      const result = await createWorkspace(newWorkspaceName)
       if (result?.workspace) {
         setWorkspaces([...workspaces, { 
           id: result.workspace.id,
@@ -47,17 +41,19 @@ export default function WorkspaceManager({
           role: 'admin'
         }])
         setNewWorkspaceName('')
+        onWorkspaceSelect(result.workspace.id)
       }
     }
   }
 
   const handleJoinWorkspace = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (joinWorkspaceId && user) {
+    if (joinWorkspaceId) {
       try {
-        await joinWorkspace(joinWorkspaceId, user.id)
+        await joinWorkspace(joinWorkspaceId)
         await fetchWorkspaces()
         setJoinWorkspaceId('')
+        onWorkspaceSelect(joinWorkspaceId)
       } catch (error) {
         console.error('Error joining workspace:', error)
       }

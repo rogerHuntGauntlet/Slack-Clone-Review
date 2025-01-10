@@ -4,7 +4,9 @@ const nextConfig = {
     domains: [
       'rlaxacnkrfohotpyvnam.supabase.co',
       'media.tenor.com',
-      'localhost'
+      'localhost',
+      'www.gravatar.com',
+      'your-default-ai-avatar.com'
     ],
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',

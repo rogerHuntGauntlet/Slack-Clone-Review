@@ -1,7 +1,19 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getWorkspaces, createWorkspace, joinWorkspace, getUserByEmail, createUserProfile, getChannels, supabase, getUserCount, testSupabaseConnection } from '../../lib/supabase'
+import {
+  supabase,
+  getWorkspaces,
+  createWorkspace,
+  joinWorkspace,
+  getUserByEmail,
+  createUserProfile,
+  getChannels,
+  getUserCount,
+  testSupabaseConnection,
+  testDatabaseTables,
+  updateUserProfileId
+} from '../../lib/supabase'
 import Sidebar from '../../components/Sidebar'
 import ChatArea from '../../components/ChatArea'
 import Header from '../../components/Header'
@@ -14,6 +26,15 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Suspense } from 'react'
 import type { Workspace } from '@/types/supabase'
 import ActivityFeed from '../../components/ActivityFeed'
+
+interface WorkspaceListProps {
+  workspaces: Workspace[];
+  onSelectWorkspace: (workspaceId: string) => void;
+  onCreateWorkspace: (e: React.FormEvent) => Promise<void>;
+  newWorkspaceName: string;
+  setNewWorkspaceName: (name: string) => void;
+  onToggleFavorite: (workspaceId: string) => void;
+}
 
 export default function Platform() {
   return (
@@ -39,7 +60,7 @@ function PlatformContent() {
   const [userWorkspaceIds, setUserWorkspaceIds] = useState<string[]>([])
   const [userCount, setUserCount] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [email, setEmail] = useState('') // Added state variable
+  const [email, setEmail] = useState('')
   const MAX_USERS = 40
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -53,27 +74,24 @@ function PlatformContent() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (session && session.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            username: session.user.user_metadata.username
-          })
-          console.log("session: ", session)
-          const userData = await getUserByEmail(session.user.email)
-            if (userData) {
-              setUser(userData)
-              await fetchUserData(userData.id, userData.email)
-            } else {
-              throw new Error('User data not found')
-            }
-       
+          let userData = await getUserByEmail(session.user.email)
+          if (!userData || userData.id !== session.user.id) {
+            console.log('Updating user profile ID for:', session.user.email)
+            userData = await updateUserProfileId(session.user.email, session.user.id)
+          }
+          if (userData) {
+            setUser(userData)
+            await fetchUserData()
+          } else {
+            throw new Error('User data not found')
+          }
         } else {
           const storedEmail = sessionStorage.getItem('userEmail')
           if (storedEmail) {
             const userData = await getUserByEmail(storedEmail)
             if (userData) {
               setUser(userData)
-              await fetchUserData(userData.id, userData.email)
+              await fetchUserData()
             } else {
               throw new Error('User data not found')
             }
@@ -91,32 +109,35 @@ function PlatformContent() {
     checkUser()
   }, [router, supabase.auth])
 
-  const fetchUserData = async (userId: string, email: string) => {
+  const fetchUserData = async () => {
     try {
-      const [userWorkspaces, userProfile] = await Promise.all([
-        getWorkspaces(userId),
-        getUserByEmail(email)
-      ])
-console.log("userWorkspaces: ", userWorkspaces)
-console.log("userProfile: ", userProfile)
-console.log("userId: ", userId)
-      if (userProfile) {
-        setUser(prevUser => ({
-          ...prevUser,
-          ...userProfile,
-        }))
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        throw new Error('No active session')
       }
-
+      
+      // Try to get or create user profile
+      let userProfile = await getUserByEmail(session.user.email)
+      if (!userProfile) {
+        console.log('Creating user profile for:', session.user.email)
+        userProfile = await createUserProfile(session.user.email)
+        if (!userProfile) {
+          throw new Error('Failed to create user profile')
+        }
+      }
+      
+      console.log('User profile:', userProfile)
+      setUser(userProfile)
+      
+      console.log('Fetching workspaces for user:', session.user.id)
+      const userWorkspaces = await getWorkspaces()
+      console.log('Fetched workspaces:', userWorkspaces)
+      
       setWorkspaces(userWorkspaces)
       setUserWorkspaceIds(userWorkspaces.map((workspace: { id: string }) => workspace.id))
       
       if (userWorkspaces.length > 0) {
-       // setActiveWorkspace(userWorkspaces[0].id)
-       // const channels = await getChannels(userWorkspaces[0].id)
-       // if (channels.length > 0) {
-       //   setActiveChannel(channels[0].id)
-       // }
-       setShowWorkspaceSelection(true)
+        setShowWorkspaceSelection(true)
       } else {
         setShowWorkspaceSelection(true)
       }
@@ -134,8 +155,14 @@ console.log("userId: ", userId)
         if (name) setJoiningWorkspaceName(name)
       })
     }
-    testSupabaseConnection().then(isConnected => {
+    testSupabaseConnection().then(async (isConnected: boolean) => {
       if (isConnected) {
+        console.log('Supabase connection successful')
+        const tablesExist = await testDatabaseTables()
+        if (!tablesExist) {
+          setError('Database tables not found or inaccessible. Please check your database setup.')
+          return
+        }
         fetchUserCount()
       } else {
         setError('Failed to connect to the database. Please try again later.')
@@ -151,14 +178,13 @@ console.log("userId: ", userId)
     }
   }, [isDarkMode])
 
-  const fetchWorkspaces = async (userId: string) => {
+  const fetchWorkspaces = async () => {
     try {
-      const userWorkspaces = await getWorkspaces(userId)
+      const userWorkspaces = await getWorkspaces()
       setWorkspaces(userWorkspaces)
       return userWorkspaces
     } catch (error) {
       console.error('Error fetching workspaces:', error)
-      setError('Failed to fetch workspaces. Please try again.')
       return []
     }
   }
@@ -208,15 +234,11 @@ console.log("userId: ", userId)
       }
       if (userData) {
         setUser({ id: userData.id, email: userData.email, username: userData.username })
-        const userWorkspaces = await fetchWorkspaces(userData.id)
-        setUserWorkspaceIds(userWorkspaces.map((workspace: { id: string }) => workspace.id))
+        await fetchUserData()
         const workspaceId = searchParams.get('workspaceId')
         if (workspaceId) {
-          await handleJoinWorkspace(workspaceId, userData.id)
-        } else if (userWorkspaces.length > 0) {
-          setShowWorkspaceSelection(true)
+          await handleJoinWorkspace(workspaceId)
         } else {
-          // No workspaces, show create workspace form
           setShowWorkspaceSelection(true)
         }
       } else {
@@ -228,32 +250,43 @@ console.log("userId: ", userId)
     }
   }
 
+  const handleError = (error: any, defaultMessage: string) => {
+    console.error(defaultMessage, error)
+    setError(error.message || defaultMessage)
+  }
+
   const handleCreateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (user && newWorkspaceName) {
-      try {
-        const result = await createWorkspace(newWorkspaceName, user.id)
-        if (result) {
-          const { workspace, channel } = result;
-          setWorkspaces(prevWorkspaces => [...prevWorkspaces, { ...workspace, role: 'admin' }])
-          setActiveWorkspace(workspace.id)
-          setActiveChannel(channel.id)
-          setNewWorkspaceName('')
-          setShowWorkspaceSelection(false)
-        } else {
-          throw new Error('Failed to create workspace')
-        }
-      } catch (error) {
-        console.error('Error creating workspace:', error)
-        setError('Failed to create workspace. Please try again.')
+    if (!newWorkspaceName) return
+    
+    try {
+      const result = await createWorkspace(newWorkspaceName)
+      if (!result?.workspace) {
+        setError('Failed to create workspace')
+        return
       }
+
+      setWorkspaces(prevWorkspaces => [...prevWorkspaces, { 
+        id: result.workspace.id,
+        name: result.workspace.name,
+        role: 'admin'
+      }])
+      setActiveWorkspace(result.workspace.id)
+      if (result.channels && result.channels.length > 0) {
+        setActiveChannel(result.channels[0].id)
+      }
+      setNewWorkspaceName('')
+      setShowWorkspaceSelection(false)
+    } catch (error) {
+      console.error('Error creating workspace:', error)
+      setError('Failed to create workspace. Please try again.')
     }
   }
 
-  const handleJoinWorkspace = async (workspaceId: string, userId: string) => {
+  const handleJoinWorkspace = async (workspaceId: string) => {
     try {
-      await joinWorkspace(workspaceId, userId)
-      const updatedWorkspaces = await fetchWorkspaces(userId)
+      await joinWorkspace(workspaceId)
+      const updatedWorkspaces = await getWorkspaces()
       setWorkspaces(updatedWorkspaces)
       setUserWorkspaceIds(updatedWorkspaces.map((workspace: { id: string }) => workspace.id))
       setActiveWorkspace(workspaceId)

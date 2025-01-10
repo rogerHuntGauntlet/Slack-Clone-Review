@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Hash } from 'lucide-react'
 import { createChannel, getChannels } from '../lib/supabase'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'react-hot-toast'
 
 interface ChannelListProps {
   channels: Channel[]
@@ -20,6 +21,7 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
   const [newChannel, setNewChannel] = useState('')
   const [localChannels, setLocalChannels] = useState<Channel[]>(channels)
   const [isCreating, setIsCreating] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
     setLocalChannels(channels)
@@ -28,16 +30,51 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
   const handleAddChannel = async (e: React.FormEvent) => {
     e.preventDefault()
     if (newChannel && !localChannels.some(channel => channel.name === newChannel) && currentUser) {
-      const result = await createChannel(newChannel, workspaceId, currentUser.id)
-      if (result.data) {
-        const createdChannel = result.data.channel
+      setIsLoading(true)
+      try {
+        console.log('Creating channel:', { name: newChannel, workspaceId })
+        const result = await createChannel(newChannel, workspaceId)
+        console.log('Channel creation result:', result)
+
+        if (!result) {
+          throw new Error('No result returned from createChannel')
+        }
+
+        // Create a channel object from the result
+        const createdChannel = {
+          id: result.id,
+          name: result.name
+        }
+
+        console.log('Created channel:', createdChannel)
+        
+        // Update local state
         setLocalChannels(prevChannels => [...prevChannels, createdChannel])
         onChannelSelect(createdChannel.id)
         setNewChannel('')
         setIsCreating(false)
+
         // Refresh the channel list
-        const updatedChannels = await getChannels(workspaceId)
-        setLocalChannels(updatedChannels)
+        try {
+          console.log('Fetching updated channel list')
+          const updatedChannels = await getChannels(workspaceId)
+          console.log('Updated channels:', updatedChannels)
+          setLocalChannels(updatedChannels)
+        } catch (refreshError) {
+          console.error('Error refreshing channel list:', refreshError)
+          toast.error('Channel created but failed to refresh the list')
+        }
+      } catch (err) {
+        const error = err as Error
+        console.error('Error creating channel:', error)
+        console.error('Error details:', {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        })
+        toast.error('Failed to create channel')
+      } finally {
+        setIsLoading(false)
       }
     }
   }
@@ -90,7 +127,7 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-            onClick={() => setIsCreating(false)}
+            onClick={() => !isLoading && setIsCreating(false)}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -111,8 +148,9 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
                       placeholder="new-channel"
                       className="bg-transparent text-white placeholder-gray-400 flex-1 outline-none"
                       autoFocus
+                      disabled={isLoading}
                       onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
+                        if (e.key === 'Escape' && !isLoading) {
                           setIsCreating(false)
                           setNewChannel('')
                         }
@@ -125,17 +163,25 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
                   <button
                     type="button"
                     onClick={() => setIsCreating(false)}
-                    className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-colors"
+                    className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
                   >
                     Cancel
                   </button>
                   <motion.button
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
+                    whileHover={{ scale: isLoading ? 1 : 1.01 }}
+                    whileTap={{ scale: isLoading ? 1 : 0.99 }}
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-medium transition-colors"
+                    disabled={isLoading}
+                    className="flex-1 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-medium transition-colors relative disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Create
+                    {isLoading ? (
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      </div>
+                    ) : (
+                      'Create'
+                    )}
                   </motion.button>
                 </div>
               </form>

@@ -53,10 +53,11 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse }) => 
 
   const addRandomMessage = () => {
     const randomMessage = SAMPLE_MESSAGES[Math.floor(Math.random() * SAMPLE_MESSAGES.length)]
+    const timestamp = new Date()
     const newMessage: ActivityMessage = {
-      id: Date.now().toString(),
+      id: `${timestamp.getTime()}-${Math.random().toString(36).substr(2, 9)}`,
       content: randomMessage,
-      timestamp: new Date()
+      timestamp
     }
 
     setMessages(prev => [newMessage, ...prev].slice(0, 50)) // Keep last 50 messages

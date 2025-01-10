@@ -90,6 +90,8 @@ function AuthContent({ workspaceId }: AuthContentProps) {
   }
 
   const fetchWorkspaceDetails = async () => {
+    if (!workspaceId) return
+    
     try {
       const { data, error } = await supabase
         .from('workspaces')

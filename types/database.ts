@@ -1,28 +1,52 @@
 export interface MessageType {
   id: string;
   content: string;
-  created_at: string | null;
   user_id: string;
-  channel: string | null;
-  parent_id?: string | null;
-  receiver_id?: string | null;
-  is_direct_message?: boolean | null;
-  updated_at?: string | null;
-  has_attachment?: boolean | null;
-  file_url?: string | null;
-  reactions?: { [key: string]: string[] };
+  channel_id: string;
+  parent_id: string | null;
+  created_at: string;
+  updated_at: string;
+  file_attachments: FileAttachment[] | null;
   user?: {
     id: string;
     username: string;
     avatar_url: string | null;
   };
   replies?: MessageType[];
-  file_attachments?: {
-    id: string;
-    file_name: string;
-    file_type: string;
-    file_url: string;
-  }[];
+  reply_count?: number;
+  reactions?: { [emoji: string]: string[] };
 }
 
-export interface MessageWithRelations extends MessageType {} 
+export interface DirectMessageType {
+  id: string;
+  content: string;
+  sender_id: string;
+  receiver_id: string;
+  parent_id: string | null;
+  created_at: string;
+  updated_at: string;
+  file_attachments: FileAttachment[] | null;
+  sender?: {
+    id: string;
+    username: string;
+    avatar_url: string | null;
+  };
+  receiver?: {
+    id: string;
+    username: string;
+    avatar_url: string | null;
+  };
+  replies?: DirectMessageType[];
+}
+
+export interface FileAttachment {
+  file_name: string;
+  file_type: string;
+  file_url: string;
+}
+
+export interface ReactionUpdate {
+  messageId: string;
+  emoji: string;
+  userId: string;
+} 
