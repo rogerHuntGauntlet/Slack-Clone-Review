@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { createUserProfile } from '@/lib/supabase'
@@ -22,10 +22,12 @@ function getRandomWorkspaceBlurb() {
   return blurbs[Math.floor(Math.random() * blurbs.length)]
 }
 
-function AuthContent() {
+interface AuthContentProps {
+  workspaceId: string | null;
+}
+
+function AuthContent({ workspaceId }: AuthContentProps) {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const workspaceId = searchParams.get('workspaceId')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -367,8 +369,18 @@ function AuthContent() {
   )
 }
 
+function AuthParams() {
+  const searchParams = useSearchParams()
+  const workspaceId = searchParams.get('workspaceId')
+  return <AuthContent workspaceId={workspaceId} />
+}
+
 export default function Auth() {
   return (
-    <AuthContent />
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+    </div>}>
+      <AuthParams />
+    </Suspense>
   )
 }
