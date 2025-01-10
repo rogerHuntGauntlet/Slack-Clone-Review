@@ -71,33 +71,8 @@ const Sidebar: FC<SidebarProps> = ({
   const currentWorkspace = workspaces.find(w => w.id === activeWorkspace)
 
   return (
-    <div className="w-75 bg-gray-800 text-white flex flex-col h-full overflow-hidden">
-      <div className="mb-4 px-4">
-        <button
-          className="flex items-center text-lg font-semibold mb-2 hover:text-gray-300 transition-colors duration-200"
-          onClick={() => setShowWorkspaces(!showWorkspaces)}
-        >
-          {showWorkspaces ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-          <span className="ml-1">Workspaces</span>
-        </button>
-        {showWorkspaces && (
-          <ul className="space-y-1">
-            {workspaces.map((workspace) => (
-              <li key={workspace.id}>
-                <button
-                  className={`w-full text-left p-2 rounded-lg flex items-center transition-all duration-200 ${
-                    activeWorkspace === workspace.id ? 'bg-gray-700' : 'hover:bg-gray-700'
-                  }`}
-                  onClick={() => setActiveWorkspace(workspace.id)}
-                >
-                  <Hash size={18} className="mr-2" />
-                  {workspace.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+    <div className="w-75 bg-gray-800 text-white flex flex-col h-full overflow-hidden pt-4">
+      
 
       <div className="mb-4 px-4">
         <UserStatus currentUser={currentUser} />

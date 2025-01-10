@@ -1,6 +1,6 @@
 import { FC, useState, useRef } from 'react'
 import { X, Send } from 'lucide-react'
-import type { MessageType } from './Message'
+import type { MessageType } from '../types/database'
 
 interface ReplyModalProps {
   isOpen: boolean;
@@ -50,7 +50,7 @@ const ReplyModal: FC<ReplyModalProps> = ({ isOpen, onClose, parentMessage, onRep
             />
             <div>
               <p className="font-semibold">{parentMessage.user?.username}</p>
-              <p className="text-xs text-gray-500">{new Date(parentMessage.created_at).toLocaleString()}</p>
+              <p className="text-xs text-gray-500">{parentMessage.created_at ? new Date(parentMessage.created_at).toLocaleString() : ''}</p>
             </div>
           </div>
           <p className="text-gray-700 dark:text-gray-300">{parentMessage.content}</p>
@@ -58,7 +58,7 @@ const ReplyModal: FC<ReplyModalProps> = ({ isOpen, onClose, parentMessage, onRep
 
         {/* Replies List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-          {parentMessage.replies?.map((reply) => (
+          {parentMessage.replies?.map((reply: MessageType) => (
             <div key={reply.id} className="flex space-x-2">
               <img
                 src={reply.user?.avatar_url || '/placeholder.svg?height=40&width=40'}
@@ -68,7 +68,7 @@ const ReplyModal: FC<ReplyModalProps> = ({ isOpen, onClose, parentMessage, onRep
               <div className="flex-1">
                 <div className="flex items-baseline space-x-2">
                   <span className="font-semibold">{reply.user?.username}</span>
-                  <span className="text-xs text-gray-500">{new Date(reply.created_at).toLocaleString()}</span>
+                  <span className="text-xs text-gray-500">{reply.created_at ? new Date(reply.created_at).toLocaleString() : ''}</span>
                 </div>
                 <p className="text-gray-700 dark:text-gray-300">{reply.content}</p>
               </div>

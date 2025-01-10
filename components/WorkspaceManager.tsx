@@ -66,21 +66,7 @@ export default function WorkspaceManager({
 
   return (
     <div className="bg-gray-800 text-white p-4 rounded-lg">
-      <h2 className="text-xl font-bold mb-4">Workspaces</h2>
-      <ul className="mb-4">
-        {workspaces.map((workspace) => (
-          <li key={workspace.id} className="mb-2">
-            <button
-              className={`w-full text-left p-2 rounded ${
-                activeWorkspace === workspace.id ? 'bg-gray-700' : 'hover:bg-gray-700'
-              }`}
-              onClick={() => onWorkspaceSelect(workspace.id)}
-            >
-              {workspace.name} ({workspace.role})
-            </button>
-          </li>
-        ))}
-      </ul>
+      
       <form onSubmit={handleCreateWorkspace} className="mb-4">
         <input
           type="text"

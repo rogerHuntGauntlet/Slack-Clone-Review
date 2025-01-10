@@ -54,13 +54,13 @@ export default function CollapsibleDMList({ workspaceId, onSelectDMAction, activ
   }
 
   return (
-    <div className={`bg-gray-800 text-white h-full flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-16' : 'w-64'}`}>
+    <div className={`bg-gray-800 text-white h-full flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-64'}`}>
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
         className={`flex items-center p-4 hover:bg-gray-700 transition-colors ${isCollapsed ? 'justify-center' : 'justify-between'}`}
       >
         {!isCollapsed && <span className="text-xl font-bold">Direct Messages</span>}
-        {isCollapsed ? <ChevronRight size={24} /> : <ChevronDown size={24} />}
+        {isCollapsed ? <ChevronRight size={30} /> : <ChevronDown size={24} />}
       </button>
       <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full">
         <ul className="space-y-1 p-2">
@@ -93,7 +93,7 @@ export default function CollapsibleDMList({ workspaceId, onSelectDMAction, activ
                   ></span>
                 </div>
                 {!isCollapsed && (
-                  <span className="ml-2 truncate">{user.username}</span>
+                  <span className="ml-3 truncate">{user.username}</span>
                 )}
               </button>
             </li>

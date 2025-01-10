@@ -43,6 +43,10 @@ export async function createWorkspace(name: string, userId: string) {
 
     if (channelError) throw channelError
 
+    if (!data?.channel || !data?.firstMessage) {
+      throw new Error('Failed to create channel or first message')
+    }
+
     return { workspace, channel: data.channel, firstMessage: data.firstMessage }
   } catch (error) {
     console.error('Error in createWorkspace:', error)
@@ -376,6 +380,10 @@ export async function createChannel(name: string, workspaceId: string, creatorId
   if (messageError) {
     console.error('Error creating first message:', messageError)
     return { error: messageError }
+  }
+
+  if (!channel || !message) {
+    return { error: new Error('Failed to create channel or message') }
   }
 
   return { data: { channel, firstMessage: message } }

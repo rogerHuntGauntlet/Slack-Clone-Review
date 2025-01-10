@@ -1,5 +1,5 @@
 import { FC, useState, useEffect, useRef } from 'react'
-import { X, Upload, Camera } from 'lucide-react'
+import { X, Upload, Camera, User } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 interface ProfileModalProps {
@@ -30,12 +30,7 @@ const ProfileModal: FC<ProfileModalProps> = ({ currentUser, onClose }) => {
 
   useEffect(() => {
     fetchProfile()
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      stopCamera()
-    }
+    return () => stopCamera()
   }, [])
 
   const fetchProfile = async () => {
@@ -52,7 +47,6 @@ const ProfileModal: FC<ProfileModalProps> = ({ currentUser, onClose }) => {
       setProfile(data)
     }
   }
-
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -147,121 +141,157 @@ const ProfileModal: FC<ProfileModalProps> = ({ currentUser, onClose }) => {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-96 max-w-[90%] mx-4 relative overflow-hidden shadow-xl">
-        <button
-          onClick={onClose}
-          className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100"
-        >
-          <X size={24} />
-        </button>
-        <h2 className="text-2xl font-bold mb-4 text-gray-800 dark:text-white">Edit Profile</h2>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg relative overflow-hidden shadow-2xl">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
+            Edit Profile
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+          >
+            <X size={20} className="text-gray-500 dark:text-gray-400" />
+          </button>
+        </div>
+
         {error && (
-          <div className="mb-4 p-2 bg-red-100 border border-red-400 text-red-700 rounded">
+          <div className="px-6 py-3 bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-400 text-sm">
             {error}
           </div>
         )}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="avatar" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Avatar
-            </label>
-            <div className="mt-1 flex items-center space-x-4">
-              <img
-                src={avatarFile ? URL.createObjectURL(avatarFile) : (profile.avatar_url || '/placeholder.svg?height=100&width=100')}
-                alt="Avatar"
-                className="w-16 h-16 rounded-full object-cover"
-              />
-              <label className="cursor-pointer bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition-colors">
-                <Upload size={20} />
-                <input
-                  type="file"
-                  id="avatar"
-                  accept="image/*"
-                  onChange={handleAvatarChange}
-                  className="hidden"
-                />
-              </label>
-              {stream ? (
-                <div className="relative">
-                  <video ref={videoRef} autoPlay className="w-32 h-32 rounded-lg" />
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          <div className="flex items-center gap-6">
+            <div className="relative group">
+              <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 p-0.5">
+                <div className="w-full h-full rounded-full overflow-hidden bg-white dark:bg-gray-800">
+                  {avatarFile || profile.avatar_url ? (
+                    <img
+                      src={avatarFile ? URL.createObjectURL(avatarFile) : profile.avatar_url}
+                      alt="Avatar"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-700">
+                      <User size={40} className="text-gray-400" />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex gap-2">
+                  <label className="cursor-pointer p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg hover:scale-110 transition-transform">
+                    <Upload size={18} className="text-blue-500" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarChange}
+                      className="hidden"
+                    />
+                  </label>
                   <button
                     type="button"
-                    onClick={takePhoto}
-                    className="absolute bottom-2 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white p-2 rounded-full hover:bg-blue-600 transition-colors"
+                    onClick={stream ? takePhoto : startCamera}
+                    className="p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg hover:scale-110 transition-transform"
                   >
-                    <Camera size={20} />
+                    <Camera size={18} className="text-green-500" />
                   </button>
                 </div>
-              ) : (
+              </div>
+            </div>
+
+            {stream && (
+              <div className="relative">
+                <video ref={videoRef} autoPlay className="w-40 h-40 rounded-lg border-2 border-blue-500" />
                 <button
                   type="button"
-                  onClick={startCamera}
-                  className="bg-green-500 text-white p-2 rounded-md hover:bg-green-600 transition-colors"
+                  onClick={takePhoto}
+                  className="absolute bottom-2 right-2 p-2 bg-blue-500 text-white rounded-full shadow-lg hover:bg-blue-600 transition-colors"
                 >
-                  <Camera size={20} />
+                  <Camera size={18} />
                 </button>
-              )}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Username
+              </label>
+              <input
+                type="text"
+                id="username"
+                name="username"
+                value={profile.username}
+                onChange={handleChange}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
+                placeholder="Enter your username"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Phone
+              </label>
+              <input
+                type="tel"
+                id="phone"
+                name="phone"
+                value={profile.phone}
+                onChange={handleChange}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
+                placeholder="Enter your phone number"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="employer" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Employer
+              </label>
+              <input
+                type="text"
+                id="employer"
+                name="employer"
+                value={profile.employer}
+                onChange={handleChange}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
+                placeholder="Enter your employer"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="bio" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Bio
+              </label>
+              <textarea
+                id="bio"
+                name="bio"
+                value={profile.bio}
+                onChange={handleChange}
+                rows={3}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow resize-none"
+                placeholder="Tell us about yourself"
+              />
             </div>
           </div>
-          <div>
-            <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Username
-            </label>
-            <input
-              type="text"
-              id="username"
-              name="username"
-              value={profile.username}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-            />
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 transition-colors"
+            >
+              Save Changes
+            </button>
           </div>
-          <div>
-            <label htmlFor="phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Phone
-            </label>
-            <input
-              type="tel"
-              id="phone"
-              name="phone"
-              value={profile.phone}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-            />
-          </div>
-          <div>
-            <label htmlFor="bio" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Bio
-            </label>
-            <textarea
-              id="bio"
-              name="bio"
-              value={profile.bio}
-              onChange={handleChange}
-              rows={3}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-            ></textarea>
-          </div>
-          <div>
-            <label htmlFor="employer" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Employer
-            </label>
-            <input
-              type="text"
-              id="employer"
-              name="employer"
-              value={profile.employer}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-            />
-          </div>
-          <button
-            type="submit"
-            className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition-colors"
-          >
-            Save Changes
-          </button>
         </form>
       </div>
     </div>

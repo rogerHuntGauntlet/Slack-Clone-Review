@@ -3,46 +3,16 @@
 import { FC, useState, useEffect, useRef, ChangeEvent } from 'react'
 import { Send, Paperclip, Smile, X, Image, FileText, Film, Music, Camera } from 'lucide-react'
 import Message from './Message'
-import EmojiPicker from 'emoji-picker-react'
 import ScrollToTopButton from './ScrollToTopButton'
 import { supabase } from '../lib/supabase'
-import { getMessages, sendMessage, sendReply } from '../lib/supabase'
 import ChatHeader from './ChatHeader'
-import { useDropzone } from 'react-dropzone'
 import debounce from 'lodash/debounce'
-import type { EmojiClickData } from 'emoji-picker-react'
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
+import type { MessageType } from '../types/database'
+import { useTheme } from 'next-themes'
+import ReplyModal from './ReplyModal'
+import { sendReply } from '../lib/supabase'
 
-interface ChatAreaProps {
-  activeWorkspace: string;
-  activeChannel: string;
-  currentUser: { id: string; email: string };
-  onSwitchChannel: (channelId: string) => void;
-  userWorkspaces: string[];
-}
-
-interface MessageType {
-  id: string;
-  user_id: string;
-  channel: string;
-  content: string;
-  created_at: string;
-  parent_id?: string;
-  reactions?: { [key: string]: string[] };
-  user: {
-    id: string;
-    username: string;
-    avatar_url: string;
-  };
-  replies?: MessageType[];
-  has_attachment?: boolean;
-  file_attachments?: {
-    id: string;
-    file_name: string;
-    file_type: string;
-    file_url: string;
-  }[];
-}
+const EMOJI_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉'];
 
 interface SearchResult {
   channelId: string;
@@ -52,8 +22,13 @@ interface SearchResult {
   timestamp: string;
 }
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const ALLOWED_FILE_TYPES = ['image/*', 'application/pdf', 'text/plain', 'video/*', 'audio/*'];
+interface ChatAreaProps {
+  activeWorkspace: string;
+  activeChannel: string;
+  currentUser: { id: string; email: string };
+  onSwitchChannel: (channelId: string) => void;
+  userWorkspaces: string[];
+}
 
 const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUser, onSwitchChannel, userWorkspaces }) => {
   const [messages, setMessages] = useState<MessageType[]>([])
@@ -65,6 +40,9 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [isTyping, setIsTyping] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<MessageType | null>(null)
+  const [replyModalOpen, setReplyModalOpen] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState<MessageType | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
@@ -72,27 +50,33 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const documentInputRef = useRef<HTMLInputElement>(null)
   const attachmentMenuRef = useRef<HTMLDivElement>(null)
+  const emojiPickerRef = useRef<HTMLDivElement>(null)
+  const { theme: appTheme } = useTheme()
+
+  const debouncedFetchMessages = useRef(
+    debounce(() => {
+      fetchMessages();
+    }, 5000)
+  ).current;
 
   useEffect(() => {
-    fetchMessages()
-    fetchChannelName()
+    fetchMessages();
+    fetchChannelName();
     const subscription = supabase
       .channel('public:messages')
       .on('postgres_changes', 
         { event: 'INSERT', schema: 'public', table: 'messages' }, 
-        (payload: { new: MessageType }) => {
-          const newMessage = payload.new
-          if (newMessage.channel === activeChannel) {
-            setMessages(prevMessages => [...prevMessages, newMessage])
-          }
+        async (payload: { new: MessageType }) => {
+          debouncedFetchMessages();
         }
       )
       .subscribe()
 
     return () => {
-      subscription.unsubscribe()
+      subscription.unsubscribe();
+      debouncedFetchMessages.cancel();
     }
-  }, [activeChannel])
+  }, [activeChannel]);
 
   useEffect(() => {
     const savedDraft = localStorage.getItem(`draft_${activeChannel}`)
@@ -123,13 +107,53 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
     }
   }, [messages]);
 
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError(null)
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [error])
+
   const fetchMessages = async () => {
     try {
-      const fetchedMessages = await getMessages(activeChannel)
-      setMessages(fetchedMessages)
-      setError(null)
-    } catch (err) {
-      console.error('Error fetching messages:', err)
+      console.log('Fetching messages for channel:', activeChannel)
+      const { data: messages, error } = await supabase
+        .from('messages')
+        .select(`
+          *,
+          user:users!messages_user_id_fkey (
+            id,
+            username,
+            avatar_url
+          )
+        `)
+        .eq('channel', activeChannel || '')
+        .is('is_direct_message', false)
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        console.error('Supabase error:', error)
+        throw error
+      }
+
+      console.log('Raw messages:', messages)
+
+      // Transform the messages
+      const transformedMessages = messages.map((message: MessageType) => ({
+        ...message,
+        user: message.user || { 
+          id: message.user_id,
+          username: 'Unknown User',
+          avatar_url: null
+        }
+      }))
+
+      console.log('Transformed messages:', transformedMessages)
+      setMessages(transformedMessages)
+    } catch (error) {
+      console.error('Error fetching messages:', error)
       setError('Failed to load messages. Please try again.')
     }
   }
@@ -152,28 +176,54 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if ((newMessage.trim() || selectedFiles.length > 0) && currentUser) {
-      try {
-        const fileUrls = await Promise.all(selectedFiles.map(file => uploadFile(file)))
-        const sentMessage = await sendMessage(
-          activeChannel, 
-          currentUser.id, 
-          newMessage.trim(), 
-          fileUrls.join(',')
-        )
-        setMessages(prevMessages => [...prevMessages, sentMessage])
-        setNewMessage('')
-        setSelectedFiles([])
-        setError(null)
-        localStorage.removeItem(`draft_${activeChannel}`)
-        chatContainerRef.current?.scrollTo({
-          top: chatContainerRef.current.scrollHeight,
-          behavior: 'smooth'
-        });
-      } catch (err) {
-        console.error('Error sending message:', err)
-        setError('Failed to send message. Please try again.')
-      }
+    if (!newMessage.trim() && selectedFiles.length === 0) return
+
+    try {
+      // Upload files first if any
+      const fileAttachments = await Promise.all(
+        selectedFiles.map(async (file) => {
+          const fileUrl = await uploadFile(file)
+          return {
+            file_name: file.name,
+            file_type: file.type,
+            file_url: fileUrl
+          }
+        })
+      )
+
+      // Send message with file attachments
+      const { data: message, error } = await supabase
+        .from('messages')
+        .insert([
+          {
+            content: newMessage.trim(),
+            channel: activeChannel,
+            user_id: currentUser.id,
+            file_attachments: fileAttachments.length > 0 ? fileAttachments : null
+          }
+        ])
+        .select(`
+          *,
+          user:users!messages_user_id_fkey (
+            id,
+            username,
+            avatar_url
+          )
+        `)
+        .single()
+
+      if (error) throw error
+
+      // Clear input and files
+      setNewMessage('')
+      setSelectedFiles([])
+      localStorage.removeItem(`draft_${activeChannel}`)
+
+      // Scroll to bottom
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    } catch (error) {
+      console.error('Error sending message:', error)
+      setError('Failed to send message. Please try again.')
     }
   }
 
@@ -277,8 +327,85 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
     return <Paperclip size={24} />;
   }
 
+  const handleReplyClick = (message: MessageType) => {
+    setSelectedMessage(message);
+    setReplyModalOpen(true);
+  };
+
+  const handleReplySubmit = async (parentId: string, content: string) => {
+    try {
+      await sendReply(activeChannel, currentUser.id, parentId, content);
+      // Refresh messages after reply
+      fetchMessages();
+    } catch (error) {
+      console.error('Error sending reply:', error);
+    }
+  };
+
+  const handleReaction = async (messageId: string, reaction: string) => {
+    const messageToUpdate = messages.find(m => m.id === messageId);
+    if (!messageToUpdate) return;
+
+    try {
+      const currentReactions = messageToUpdate.reactions || {};
+      const userReactions = currentReactions[reaction] || [];
+      const hasReacted = userReactions.includes(currentUser.id);
+
+      if (hasReacted) {
+        // Remove reaction
+        const updatedReactions = {
+          ...currentReactions,
+          [reaction]: userReactions.filter(id => id !== currentUser.id)
+        };
+
+        await supabase
+          .from('messages')
+          .update({ reactions: updatedReactions })
+          .eq('id', messageId);
+
+        // Update local state
+        setMessages(prevMessages => 
+          prevMessages.map(m => 
+            m.id === messageId 
+              ? {
+                  ...m,
+                  reactions: updatedReactions
+                }
+              : m
+          )
+        );
+      } else {
+        // Add reaction
+        const updatedReactions = {
+          ...currentReactions,
+          [reaction]: [...userReactions, currentUser.id]
+        };
+
+        await supabase
+          .from('messages')
+          .update({ reactions: updatedReactions })
+          .eq('id', messageId);
+
+        // Update local state
+        setMessages(prevMessages => 
+          prevMessages.map(m => 
+            m.id === messageId 
+              ? {
+                  ...m,
+                  reactions: updatedReactions
+                }
+              : m
+          )
+        );
+      }
+      debouncedFetchMessages();
+    } catch (error) {
+      console.error('Error handling reaction:', error);
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
+    <div className="flex flex-col h-full w-full bg-white dark:bg-gray-900 transition-all duration-300">
       <ChatHeader
         channelName={channelName}
         isDM={false}
@@ -287,14 +414,14 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
       />
       
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mx-2" role="alert">
           <strong className="font-bold">Error:</strong>
           <span className="block sm:inline"> {error}</span>
         </div>
       )}
 
       {searchResults.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
+        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 w-full max-w-[calc(100%-1rem)] mx-auto">
           <h3 className="text-lg font-semibold mb-2">Search Results:</h3>
           <ul className="flex-grow overflow-y-auto space-y-1 pr-2 custom-scrollbar">
             {searchResults.map((result, index) => (
@@ -303,8 +430,8 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
                 onClick={() => handleSelectSearchResult(result)}
                 className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded"
               >
-                <p className="font-semibold">{result.sender} in #{channelName}</p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{result.content}</p>
+                <p className="font-semibold truncate">{result.sender} in #{channelName}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 truncate">{result.content}</p>
                 <p className="text-xs text-gray-500">{result.timestamp}</p>
               </li>
             ))}
@@ -312,170 +439,173 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
         </div>
       )}
 
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-        {messages.map((message) => (
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-2 custom-scrollbar w-full max-w-[calc(100%-0.5rem)] mx-auto space-y-px">
+        {messages.map((message, index) => (
           <Message
             key={message.id}
             message={message}
             currentUser={currentUser}
-            onReply={handleReply}
-            onReaction={(messageId, emoji) => {
-              console.log('Reaction:', messageId, emoji)
-            }}
+            onReplyClick={handleReplyClick}
+            onReactionSelect={handleReaction}
+            className={index % 2 === 0 ? 'bg-gray-50 dark:bg-gray-800/50' : 'bg-gray-50 dark:bg-gray-800/50'}
           />
         ))}
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="relative">
-        <div className="absolute bottom-full left-0 right-0">
-          <div className={`bg-gray-50 dark:bg-gray-800 rounded-t-lg transform transition-all duration-300 ease-in-out ${
-            (isTyping || selectedFiles.length > 0) ? 'opacity-100' : 'opacity-0 translate-y-2 h-0 overflow-hidden'
-          }`}>
-            {isTyping && (
-              <div className="text-sm text-gray-500 dark:text-gray-400 px-4 py-2">
-                Someone is typing...
-              </div>
-            )}
-            {selectedFiles.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-4 py-2">
-                {selectedFiles.map((file, index) => (
-                  <div key={index} className="flex items-center bg-gray-200 dark:bg-gray-700 rounded-full px-2 py-1 text-xs">
-                    {getFileIcon(file.type)}
-                    <span className="ml-1 truncate max-w-[100px]">{file.name}</span>
-                    <button type="button" onClick={() => removeFile(index)} className="ml-1 text-red-500 hover:text-red-700">
-                      <X size={12} />
+      <div className="relative w-full max-w-[calc(100%-0.5rem)] mx-auto">
+        <form onSubmit={handleSendMessage} className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
+          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileInput(e, 'image')} />
+          <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleFileInput(e, 'camera')} />
+          <input type="file" ref={documentInputRef} className="hidden" accept=".pdf,.txt" onChange={(e) => handleFileInput(e, 'document')} />
+
+          <div className="max-w-[95%] mx-auto">
+            <div className="relative flex flex-col rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm">
+              {selectedFiles.length > 0 && (
+                <div className="p-3 border-b border-gray-200 dark:border-gray-600 flex gap-2 flex-wrap">
+                  {selectedFiles.map((file, index) => (
+                    <div key={index} className="relative group">
+                      <div className="w-20 h-20 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden bg-gray-50 dark:bg-gray-800">
+                        {file.type.startsWith('image/') ? (
+                          <img src={URL.createObjectURL(file)} alt="Preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <FileText size={24} className="text-gray-400" />
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-end p-2">
+                <div className="flex-1 relative">
+                  <textarea
+                    value={newMessage}
+                    onChange={(e) => handleTextAreaChange(e)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage(e);
+                      }
+                    }}
+                    placeholder="Send a message..."
+                    className="w-full p-2 pr-24 bg-transparent border-0 outline-none text-gray-900 dark:text-white resize-none min-h-[44px] max-h-[300px] text-sm whitespace-pre-wrap"
+                    rows={3}
+                    style={{
+                      height: newMessage.split('\n').length > 1 ? 'auto' : '44px',
+                      minHeight: '44px'
+                    }}
+                  />
+                  
+                  <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    >
+                      <Smile size={20} />
+                    </button>
+                    <button
+                      type="button"
+                      className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors relative"
+                      onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+                    >
+                      <Paperclip size={20} />
                     </button>
                   </div>
-                ))}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={!newMessage.trim() && selectedFiles.length === 0}
+                  className="ml-2 p-2 rounded-full bg-[#007a5a] hover:bg-[#148567] disabled:bg-gray-200 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-colors flex-shrink-0"
+                >
+                  <Send size={20} />
+                </button>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
 
-        <form onSubmit={handleSendMessage} className="bg-gray-100 dark:bg-gray-800 p-4">
-          {/* Hidden file inputs */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            accept="image/*"
-            onChange={(e) => handleFileInput(e, 'image')}
-          />
-          <input
-            type="file" 
-            ref={cameraInputRef}
-            className="hidden"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => handleFileInput(e, 'camera')}
-          />
-          <input
-            type="file"
-            ref={documentInputRef} 
-            className="hidden"
-            accept=".pdf,.txt"
-            onChange={(e) => handleFileInput(e, 'document')}
-          />
-
-          <div className="flex items-end gap-4">
-            <div className="flex-1 relative">
-              {/* Attachment button */}
-              <div className="absolute -top-10 left-0">
+            {showAttachmentMenu && (
+              <div 
+                className="absolute bottom-full right-12 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 py-2 min-w-[200px]"
+                ref={attachmentMenuRef}
+              >
                 <button
                   type="button"
-                  className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 transition-colors"
-                  onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-                  title="Add attachment"
-                >
-                  <Paperclip size={18} />
-                </button>
-
-                {showAttachmentMenu && (
-                  <div 
-                    className="absolute top-full left-0 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 py-2 z-50"
-                    ref={attachmentMenuRef}
-                  >
-                    <button
-                      type="button"
-                      className="w-full px-4 py-2 flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                      onClick={() => {
-                        fileInputRef.current?.click();
-                        setShowAttachmentMenu(false);
-                      }}
-                    >
-                      <Image size={18} />
-                      <span>Upload image</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full px-4 py-2 flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                      onClick={() => {
-                        cameraInputRef.current?.click();
-                        setShowAttachmentMenu(false);
-                      }}
-                    >
-                      <Camera size={18} />
-                      <span>Take photo</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full px-4 py-2 flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                      onClick={() => {
-                        documentInputRef.current?.click();
-                        setShowAttachmentMenu(false);
-                      }}
-                    >
-                      <FileText size={18} />
-                      <span>Upload document</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <textarea
-                value={newMessage}
-                onChange={(e) => handleTextAreaChange(e)}
-                placeholder="Type your message..."
-                className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none min-h-[80px]"
-                rows={3}
-              />
-            </div>
-
-            {/* Send and emoji buttons */}
-            <div className="flex flex-col gap-2">
-              <button
-                type="submit"
-                disabled={!newMessage.trim() && selectedFiles.length === 0}
-                className="p-3 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white transition-colors"
-              >
-                <Send size={20} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="p-3 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 transition-colors"
-              >
-                <Smile size={20} />
-              </button>
-            </div>
-
-            {/* Emoji picker popover */}
-            {showEmojiPicker && (
-              <div className="absolute bottom-24 right-8 z-50 shadow-lg rounded-lg">
-                <div className="absolute -bottom-2 right-6 w-4 h-4 bg-white dark:bg-gray-700 rotate-45" />
-                <EmojiPicker
-                  onEmojiClick={(emojiObject: EmojiClickData) => {
-                    setNewMessage(newMessage + emojiObject.emoji)
-                    setShowEmojiPicker(false)
+                  className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm"
+                  onClick={() => {
+                    fileInputRef.current?.click();
+                    setShowAttachmentMenu(false);
                   }}
-                />
+                >
+                  <Image size={18} />
+                  <span>Upload image</span>
+                </button>
+                <button
+                  type="button"
+                  className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm"
+                  onClick={() => {
+                    cameraInputRef.current?.click();
+                    setShowAttachmentMenu(false);
+                  }}
+                >
+                  <Camera size={18} />
+                  <span>Take photo</span>
+                </button>
+                <button
+                  type="button"
+                  className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm"
+                  onClick={() => {
+                    documentInputRef.current?.click();
+                    setShowAttachmentMenu(false);
+                  }}
+                >
+                  <FileText size={18} />
+                  <span>Upload document</span>
+                </button>
+              </div>
+            )}
+            {showEmojiPicker && (
+              <div 
+                className="absolute bottom-full right-12 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 p-2 z-50 grid grid-cols-5 gap-2"
+                ref={emojiPickerRef}
+              >
+                {EMOJI_OPTIONS.map((emoji, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      setNewMessage(prev => prev + emoji);
+                      setShowEmojiPicker(false);
+                    }}
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xl"
+                  >
+                    {emoji}
+                  </button>
+                ))}
               </div>
             )}
           </div>
         </form>
       </div>
       <ScrollToTopButton />
+      {replyModalOpen && selectedMessage && (
+        <ReplyModal
+          isOpen={replyModalOpen}
+          onClose={() => setReplyModalOpen(false)}
+          parentMessage={selectedMessage}
+          onReply={handleReplySubmit}
+          currentUser={currentUser}
+        />
+      )}
     </div>
   )
 }

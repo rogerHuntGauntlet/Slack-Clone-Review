@@ -1,5 +1,5 @@
 import { FC, useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, PauseCircle, PlayCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, PauseCircle, PlayCircle, ChevronLeft } from 'lucide-react'
 
 interface ActivityMessage {
   id: string
@@ -33,6 +33,7 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse }) => 
   const handleCollapse = () => {
     const newCollapsed = !isCollapsed;
     setIsCollapsed(newCollapsed);
+    setIsPaused(newCollapsed); // Auto-pause when collapsed
     onCollapse?.(newCollapsed);
   };
 
@@ -73,17 +74,30 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse }) => 
   }
 
   return (
-    <div className={`flex-shrink-0 bg-gray-800 text-white h-full flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-80'}`}>
-      <div 
-        className={`flex items-center p-4 hover:bg-gray-700 transition-colors cursor-pointer ${isCollapsed ? 'justify-center' : 'justify-between'}`}
-        onClick={handleCollapse}
-      >
-        {!isCollapsed && <span className="text-xl font-bold">Activity Feed</span>}
-        <div className="w-6 h-6 flex items-center justify-center bg-gray-700 rounded-full hover:bg-gray-600 transition-colors">
-          {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+    <div className={`relative flex-shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0' : 'w-80'}`}>
+      {/* Main Feed Content */}
+      <div className={`absolute right-0 top-0 h-full bg-gray-800 text-white flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0 overflow-hidden' : 'w-full'}`}>
+        <div className="flex items-center p-4 justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 p-0.5 flex-shrink-0">
+              <div className="w-full h-full rounded-full overflow-hidden bg-gray-800 flex items-center justify-center">
+                <img
+                  src="https://media.tenor.com/NeaT_0PBOzQAAAAM/robot-reaction-eww.gif"
+                  alt="AI Assistant"
+                  className="w-7 h-7 rounded-full"
+                />
+              </div>
+            </div>
+            <span className="font-semibold">AI Feed</span>
+          </div>
+          <button 
+            className="w-6 h-6 flex items-center justify-center bg-gray-700 rounded-full hover:bg-gray-600 transition-colors"
+            onClick={handleCollapse}
+          >
+            <ChevronRight size={16} />
+          </button>
         </div>
-      </div>
-      {!isCollapsed && (
+
         <div className="flex items-center px-4 py-2 border-b border-gray-700">
           <button
             onClick={(e) => {
@@ -105,9 +119,8 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse }) => 
             )}
           </button>
         </div>
-      )}
-      <div className="flex-grow overflow-y-auto">
-        {!isCollapsed && (
+
+        <div className="flex-grow overflow-y-auto">
           <div className="space-y-2 p-2">
             {messages.map(message => (
               <div key={message.id} className="bg-gray-700 rounded-lg p-2">
@@ -121,8 +134,28 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse }) => 
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Floating Tab when collapsed */}
+      {isCollapsed && (
+        <div 
+          className="absolute right-0 top-1 cursor-pointer transform transition-transform duration-300 hover:-translate-x-1"
+          onClick={handleCollapse}
+        >
+          <div className="bg-gray-800 text-white p-2.5 rounded-l-full shadow-lg flex items-center">
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 p-0.5">
+              <div className="w-full h-full rounded-full overflow-hidden bg-gray-800 flex items-center justify-center">
+                <img
+                  src="https://media.tenor.com/NeaT_0PBOzQAAAAM/robot-reaction-eww.gif"
+                  alt="AI Assistant"
+                  className="w-9 h-9 rounded-full"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
