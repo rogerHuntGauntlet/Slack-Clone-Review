@@ -1,28 +1,30 @@
 import { FC, useState } from 'react'
-import { Smile, ChevronDown, ChevronUp, MessageSquare, Reply, Download, Image, FileText, Film, Music } from 'lucide-react'
+import { MessageSquare, Image, FileText, Film, Music, Download } from 'lucide-react'
 import EmojiReactions from './EmojiReactions'
-import ReplyComponent from './Reply'
+import ReplyModal from './ReplyModal'
 import DOMPurify from 'isomorphic-dompurify'
 
-interface MessageProps {
-  message: {
+export interface MessageType {
+  id: string;
+  content: string;
+  created_at: string;
+  user_id: string;
+  reactions?: { [key: string]: string[] };
+  user?: {
+    username: string;
+    avatar_url: string;
+  };
+  replies?: MessageType[];
+  file_attachments?: {
     id: string;
-    content: string;
-    created_at: string;
-    user_id: string;
-    reactions?: { [key: string]: string[] };
-    user?: {
-      username: string;
-      avatar_url: string;
-    };
-    replies?: MessageProps['message'][];
-    file_attachments?: {
-      id: string;
-      file_name: string;
-      file_type: string;
-      file_url: string;
-    }[];
-  }
+    file_name: string;
+    file_type: string;
+    file_url: string;
+  }[];
+}
+
+interface MessageProps {
+  message: MessageType;
   currentUser: {
     id: string;
     email: string;
@@ -32,20 +34,9 @@ interface MessageProps {
   isThreadView?: boolean;
 }
 
-const Message: FC<MessageProps> = ({ message, currentUser, onReply }) => {
-  const [showEmojiSelector, setShowEmojiSelector] = useState(false)
-  const [showReplies, setShowReplies] = useState(false)
-  const [replyContent, setReplyContent] = useState('')
-  const emojiOptions = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉']
-
+const Message: FC<MessageProps> = ({ message, currentUser, onReply, onReaction }) => {
+  const [showReplyModal, setShowReplyModal] = useState(false)
   const isCurrentUserMessage = message.user_id === currentUser.id
-
-  const handleReply = async () => {
-    if (replyContent.trim()) {
-      await onReply(message.id, replyContent.trim())
-      setReplyContent('')
-    }
-  }
 
   const getFileIcon = (fileType: string) => {
     if (fileType.startsWith('image/')) return <Image size={24} />;
@@ -89,10 +80,7 @@ const Message: FC<MessageProps> = ({ message, currentUser, onReply }) => {
   }
 
   return (
-    <div
-      id={`message-${message.id}`}
-      className="mb-4"
-    >
+    <div id={`message-${message.id}`} className="mb-4">
       <div className={`p-3 rounded-lg shadow-md ${
         isCurrentUserMessage ? 'bg-blue-500 bg-opacity-50 ml-auto' : 'bg-pink-500 bg-opacity-50'
       } backdrop-blur-md max-w-3/4 break-words`}>
@@ -111,11 +99,33 @@ const Message: FC<MessageProps> = ({ message, currentUser, onReply }) => {
           className="mb-2 text-white" 
           dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(message.content) }} 
         />
-        {message.file_attachments && message.file_attachments.map((attachment, index) => (
-          <div key={index} className="mb-2">
-            {renderAttachment(attachment)}
+        {message.file_attachments && message.file_attachments.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {message.file_attachments.map((attachment, index) => (
+              <div key={index} className="relative">
+                {attachment.file_type.startsWith('image/') ? (
+                  <a href={attachment.file_url} target="_blank" rel="noopener noreferrer">
+                    <img 
+                      src={attachment.file_url} 
+                      alt={attachment.file_name}
+                      className="max-w-xs max-h-48 rounded-lg object-cover"
+                    />
+                  </a>
+                ) : (
+                  <a 
+                    href={attachment.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center p-2 bg-gray-100 dark:bg-gray-800 rounded-lg"
+                  >
+                    {getFileIcon(attachment.file_type)}
+                    <span className="ml-2 text-sm">{attachment.file_name}</span>
+                  </a>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
+        )}
         <div className="flex items-center space-x-2 mt-2">
           <EmojiReactions
             messageId={message.id}
@@ -124,38 +134,21 @@ const Message: FC<MessageProps> = ({ message, currentUser, onReply }) => {
           />
           <button
             className="text-white hover:text-blue-300 transition-colors duration-200 flex items-center"
-            onClick={() => setShowReplies(!showReplies)}
+            onClick={() => setShowReplyModal(true)}
           >
             <MessageSquare size={16} className="mr-1" />
-            {showReplies ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             {message.replies && message.replies.length > 0 && ` (${message.replies.length})`}
           </button>
         </div>
       </div>
-      {showReplies && (
-        <div className="mt-2 ml-8">
-          {message.replies && Array.isArray(message.replies) && message.replies.map((reply) => (
-            <ReplyComponent key={reply.id} reply={reply} currentUser={currentUser} />
-          ))}
-          <div className="mt-2 flex items-center">
-            <input
-              type="text"
-              value={replyContent}
-              onChange={(e) => setReplyContent(e.target.value)}
-              placeholder="Type your reply..."
-              className="flex-grow p-2 rounded-l-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={handleReply}
-              className="p-2 bg-transparent text-white hover:text-blue-500 disabled:text-gray-400
-                         rounded-r-md border border-l-0 border-gray-300
-                         transition-all duration-200 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95"
-            >
-              <Reply size={20} />
-            </button>
-          </div>
-        </div>
-      )}
+
+      <ReplyModal
+        isOpen={showReplyModal}
+        onClose={() => setShowReplyModal(false)}
+        parentMessage={message}
+        onReply={onReply}
+        currentUser={currentUser}
+      />
     </div>
   )
 }

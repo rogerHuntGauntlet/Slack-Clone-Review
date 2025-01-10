@@ -127,7 +127,7 @@ const DirectMessageArea: FC<DirectMessageAreaProps> = ({ currentUser, otherUserI
           <span className="block sm:inline"> {error}</span>
         </div>
       )}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
         {otherUser && <ProfileCard user={otherUser} />}
         {messages.map((message) => (
           <div

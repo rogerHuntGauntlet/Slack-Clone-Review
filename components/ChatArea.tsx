@@ -1,7 +1,7 @@
 'use client'
 
 import { FC, useState, useEffect, useRef, ChangeEvent } from 'react'
-import { Send, Paperclip, Smile, X, Image, FileText, Film, Music } from 'lucide-react'
+import { Send, Paperclip, Smile, X, Image, FileText, Film, Music, Camera } from 'lucide-react'
 import Message from './Message'
 import EmojiPicker from 'emoji-picker-react'
 import ScrollToTopButton from './ScrollToTopButton'
@@ -27,6 +27,7 @@ interface MessageType {
   channel: string;
   content: string;
   created_at: string;
+  parent_id?: string;
   reactions?: { [key: string]: string[] };
   user: {
     id: string;
@@ -58,6 +59,7 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
   const [messages, setMessages] = useState<MessageType[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [channelName, setChannelName] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
@@ -65,6 +67,10 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
   const [isTyping, setIsTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const documentInputRef = useRef<HTMLInputElement>(null)
+  const attachmentMenuRef = useRef<HTMLDivElement>(null)
   //const textAreaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -72,8 +78,8 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
     fetchChannelName()
     const subscription = supabase
       .channel('public:messages')
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'messages' }, 
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload: { new: MessageType }) => {
           const newMessage = payload.new
           if (newMessage.channel === activeChannel) {
@@ -94,6 +100,20 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
       setNewMessage(savedDraft)
     }
   }, [activeChannel])
+
+  // Add click outside handler for attachment menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(event.target as Node)) {
+        setShowAttachmentMenu(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   const fetchMessages = async () => {
     try {
@@ -124,9 +144,13 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
 
   useEffect(() => {
     if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+      // Only auto-scroll if the new message is not a reply
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage && !lastMessage.parent_id) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
     }
-  }, [messages])
+  }, [messages]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -134,16 +158,22 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
       try {
         const fileUrls = await Promise.all(selectedFiles.map(file => uploadFile(file)))
         const sentMessage = await sendMessage(
-          activeChannel, 
-          currentUser.id, 
-          newMessage.trim(), 
-          fileUrls.join(',')  // Join URLs into a single string
+          activeChannel,
+          currentUser.id,
+          newMessage.trim(),
+          fileUrls.join(',')
         )
+        // Force scroll only for new messages, not replies
         setMessages(prevMessages => [...prevMessages, sentMessage])
         setNewMessage('')
         setSelectedFiles([])
         setError(null)
         localStorage.removeItem(`draft_${activeChannel}`)
+        // Force scroll for new messages
+        chatContainerRef.current?.scrollTo({
+          top: chatContainerRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
       } catch (err) {
         console.error('Error sending message:', err)
         setError('Failed to send message. Please try again.')
@@ -155,8 +185,8 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
     if (content && currentUser) {
       try {
         const sentReply = await sendReply(activeChannel, currentUser.id, parentId, content)
-        setMessages(prevMessages => prevMessages.map(message => 
-          message.id === parentId 
+        setMessages(prevMessages => prevMessages.map(message =>
+          message.id === parentId
             ? { ...message, replies: [...(message.replies || []), sentReply] }
             : message
         ))
@@ -176,7 +206,7 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
     if (result.channelId !== activeChannel) {
       onSwitchChannel(result.channelId);
     }
-    
+
     setTimeout(() => {
       const messageElement = document.getElementById(`message-${result.messageId}`);
       if (messageElement) {
@@ -192,12 +222,12 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
   };
 
   const onDrop = (acceptedFiles: File[]) => {
-    const validFiles = acceptedFiles.filter(file => 
+    const validFiles = acceptedFiles.filter(file =>
       file.size <= MAX_FILE_SIZE && ALLOWED_FILE_TYPES.some(type => file.type.match(type))
     );
     setSelectedFiles(prevFiles => [...prevFiles, ...validFiles]);
-    
-    const invalidFiles = acceptedFiles.filter(file => 
+
+    const invalidFiles = acceptedFiles.filter(file =>
       file.size > MAX_FILE_SIZE || !ALLOWED_FILE_TYPES.some(type => file.type.match(type))
     );
     if (invalidFiles.length > 0) {
@@ -254,6 +284,19 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
     return <Paperclip size={24} />;
   }
 
+  const handleFileInput = (e: ChangeEvent<HTMLInputElement>, type: 'image' | 'camera' | 'document') => {
+    const files = Array.from(e.target.files || [])
+    const validFiles = files.filter(file => {
+      if (type === 'image') return file.type.startsWith('image/')
+      if (type === 'camera') return file.type.startsWith('image/')
+      if (type === 'document') return file.type === 'application/pdf' || file.type === 'text/plain'
+      return false
+    })
+
+    setSelectedFiles(prev => [...prev, ...validFiles])
+    e.target.value = '' // Reset input
+  }
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       <ChatHeader
@@ -271,7 +314,7 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
       {searchResults.length > 0 && (
         <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
           <h3 className="text-lg font-semibold mb-2">Search Results:</h3>
-           <ul className="flex-grow overflow-y-auto space-y-1 pr-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full">
+          <ul className="flex-grow overflow-y-auto space-y-1 pr-2 custom-scrollbar">
             {searchResults.map((result, index) => (
               <li
                 key={index}
@@ -286,7 +329,10 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
           </ul>
         </div>
       )}
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto p-1 space-y-1 custom-scrollbar"
+      >
         {messages.map((message) => (
           <Message
             key={message.id}
@@ -294,69 +340,150 @@ const ChatArea: FC<ChatAreaProps> = ({ activeWorkspace, activeChannel, currentUs
             currentUser={currentUser}
             onReply={handleReply}
             onReaction={(messageId, emoji) => {
-              // Handle reaction here
+              // Handle reaction here 
               console.log('Reaction:', messageId, emoji)
             }}
           />
         ))}
         <div ref={messagesEndRef} />
       </div>
-      <form onSubmit={handleSendMessage} className="p-4 bg-gray-100 dark:bg-gray-800 flex items-start space-x-2">
-        <div {...getRootProps()} className={`w-1/10 border-2 border-dashed rounded-lg p-2 ${isDragActive ? 'border-blue-500 bg-blue-50 dark:bg-blue-900' : 'border-gray-300 dark:border-gray-600'}`}>
-          <input {...getInputProps()} />
-          <Paperclip className="mx-auto text-gray-500 dark:text-gray-400" />
-        </div>
-        <textarea
-          value={newMessage}
-          onChange={(e) => handleTextAreaChange(e)}
-          placeholder="Type your message..."
-          className="flex-1 p-2 mx-2 rounded-lg border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
-          rows={3}
-        />
-        <div className="flex flex-col space-y-2">
-          <button
-            type="button"
-            className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors duration-200"
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-          >
-            <Smile size={24} />
-          </button>
-          <button
-            type="submit"
-            className="bg-blue-500 text-white p-2 rounded-full hover:bg-blue-600 transition-colors duration-200"
-          >
-            <Send size={24} />
-          </button>
-        </div>
-        {showEmojiPicker && (
-          <div className="absolute bottom-20 right-8 z-10">
-            <EmojiPicker
-              onEmojiClick={(emojiObject: EmojiClickData) => {
-                setNewMessage(newMessage + emojiObject.emoji)
-                setShowEmojiPicker(false)
-              }}
-            />
+      <div className="relative">
+        <div className="absolute bottom-full left-0 right-0">
+          <div className={`bg-gray-50 dark:bg-gray-800 transform transition-all duration-300 ease-in-out ${
+            (isTyping || selectedFiles.length > 0) ? 'opacity-100 py-1' : 'opacity-0 h-0 overflow-hidden'
+          }`}>
+            {isTyping && (
+              <div className="text-xs text-gray-500 dark:text-gray-400 px-3">
+                Someone is typing...
+              </div>
+            )}
+            {selectedFiles.length > 0 && (
+              <div className="flex flex-wrap gap-1 px-3">
+                {selectedFiles.map((file, index) => (
+                  <div key={index} className="flex items-center bg-gray-200 dark:bg-gray-700 rounded-full px-2 py-0.5 text-xs">
+                    {getFileIcon(file.type)}
+                    <span className="ml-1 truncate max-w-[100px]">{file.name}</span>
+                    <button type="button" onClick={() => removeFile(index)} className="ml-1 text-red-500 hover:text-red-700">
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </form>
-      {selectedFiles.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {selectedFiles.map((file, index) => (
-            <div key={index} className="flex items-center bg-gray-200 dark:bg-gray-700 rounded-full px-2 py-1 text-xs">
-              {getFileIcon(file.type)}
-              <span className="ml-1 truncate max-w-[100px]">{file.name}</span>
-              <button type="button" onClick={() => removeFile(index)} className="ml-1 text-red-500 hover:text-red-700">
-                <X size={12} />
-              </button>
+        </div>
+        <form onSubmit={handleSendMessage} className="bg-gray-100 dark:bg-gray-800 p-2">
+          {/* Hidden file inputs */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            accept="image/*"
+            onChange={(e) => handleFileInput(e, 'image')}
+          />
+          <input
+            type="file"
+            ref={cameraInputRef}
+            className="hidden"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => handleFileInput(e, 'camera')}
+          />
+          <input
+            type="file"
+            ref={documentInputRef}
+            className="hidden"
+            accept=".pdf,.txt"
+            onChange={(e) => handleFileInput(e, 'document')}
+          />
+
+          <div className="flex items-end gap-2">
+            <div className="flex-1 relative">
+              <textarea
+                value={newMessage}
+                onChange={(e) => handleTextAreaChange(e)}
+                placeholder="Type your message..."
+                className="w-full p-2 pl-16 rounded-lg border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none min-h-[80px] max-h-[200px] overflow-y-auto text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage(e);
+                  }
+                }}
+              />
+
+              <div className="absolute bottom-2 left-2">
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    className="p-1.5 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 transition-colors"
+                  >
+                    <Smile size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+                    className="p-1.5 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 transition-colors"
+                    title="Add attachment"
+                  >
+                    <Paperclip size={18} />
+                  </button>
+                </div>
+
+                {showAttachmentMenu && (
+                  <div
+                    ref={attachmentMenuRef}
+                    className="absolute bottom-full left-0 mb-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 py-1 z-50 text-sm"
+                  >
+                    <button
+                      type="button"
+                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                      onClick={() => {
+                        fileInputRef.current?.click();
+                        setShowAttachmentMenu(false);
+                      }}
+                    >
+                      <Image size={16} />
+                      <span>Upload image</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                      onClick={() => {
+                        cameraInputRef.current?.click();
+                        setShowAttachmentMenu(false);
+                      }}
+                    >
+                      <Camera size={16} />
+                      <span>Take photo</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                      onClick={() => {
+                        documentInputRef.current?.click();
+                        setShowAttachmentMenu(false);
+                      }}
+                    >
+                      <FileText size={16} />
+                      <span>Upload document</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          ))}
-        </div>
-      )}
-      {isTyping && (
-        <div className="text-sm text-gray-500 dark:text-gray-400 p-2">
-          Someone is typing...
-        </div>
-      )}
+
+            <button
+              type="submit"
+              disabled={!newMessage.trim() && selectedFiles.length === 0}
+              className="h-[80px] px-3 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white transition-colors"
+            >
+              <Send size={20} />
+            </button>
+          </div>
+        </form>
+      </div>
       <ScrollToTopButton />
     </div>
   )

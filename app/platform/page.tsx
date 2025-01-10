@@ -407,6 +407,7 @@ console.log("userId: ", userId)
         onOpenProfile={() => setShowProfileModal(true)}
         onLogout={handleLogout}
         onReturnToWorkspaceSelection={handleReturnToWorkspaceSelection}
+        activeWorkspaceId={activeWorkspace}
       />
       <div className="flex flex-1 overflow-hidden">
         <CollapsibleDMList

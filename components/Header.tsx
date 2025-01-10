@@ -1,6 +1,8 @@
-import { FC, useState } from "react";
+import { FC, useEffect, useState } from "react";
 import { Moon, Sun, User, PlusCircle, LogOut } from 'lucide-react';
 import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 interface HeaderProps {
   currentUser: { id: string; email: string };
@@ -10,44 +12,26 @@ interface HeaderProps {
   onOpenProfile: () => void;
   onLogout: () => void;
   onReturnToWorkspaceSelection: () => void;
+  activeWorkspaceId?: string;
 }
-
-const randomPrompts = [
-  "Unraveling the secrets of community dominance...",
-  "Deciphering the path to ultimate influence...",
-  "Scheming for absolute efficiency and power...",
-  "Whispering truths only the bold dare ask...",
-  "Calculating the masterstroke to outshine everyone...",
-  "Peering into the shadows for hidden insights...",
-  "Crafting the ultimate strategy for control...",
-  "Exploring forbidden tactics of community engagement...",
-  "Devising flawless moves in the game of influence...",
-  "Unleashing clandestine wisdom for unparalleled success...",
-];
-
-const getRandomPrompt = () => {
-  const index = Math.floor(Math.random() * randomPrompts.length);
-  return randomPrompts[index];
-};
 
 const NavButton: FC<{
   onClick: () => void;
   icon: React.ReactNode;
-  label: string;
-  hoverColor: string;
-  title?: string;
-}> = ({ onClick, icon, label, hoverColor, title }) => (
-  <button
+  label?: string;
+  showLabel?: boolean;
+}> = ({ onClick, icon, label, showLabel = false }) => (
+  <motion.button
+    whileHover={{ scale: 1.02 }}
+    whileTap={{ scale: 0.98 }}
     onClick={onClick}
-    className={`flex items-center gap-2 min-w-[120px] justify-center text-white hover:text-${hoverColor} 
-    bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-4 py-2.5 
-    transition-all duration-300 hover:border-${hoverColor} hover:shadow-lg 
-    hover:shadow-${hoverColor}/20 hover:-translate-y-0.5`}
-    title={title}
+    className="flex items-center gap-2 text-gray-400 hover:text-white p-2 rounded-lg 
+    hover:bg-white/10 transition-all duration-200"
+    title={label}
   >
     {icon}
-    <span className="font-medium">{label}</span>
-  </button>
+    {showLabel && label && <span className="text-sm font-medium">{label}</span>}
+  </motion.button>
 );
 
 const Header: FC<HeaderProps> = ({
@@ -57,73 +41,90 @@ const Header: FC<HeaderProps> = ({
   onOpenProfile,
   onLogout,
   onReturnToWorkspaceSelection,
+  activeWorkspaceId
 }) => {
-  // const [isChatOpen, setChatOpen] = useState(false);
-  // const [currentPrompt, setCurrentPrompt] = useState("");
+  const [workspaceName, setWorkspaceName] = useState<string>("");
+  const supabase = createClientComponentClient();
 
-  // const handleChatToggle = () => {
-  //   setChatOpen((prev) => !prev);
-  //   setCurrentPrompt(getRandomPrompt());
-  // };
+  useEffect(() => {
+    async function getWorkspaceName() {
+      if (!activeWorkspaceId) {
+        setWorkspaceName("");
+        return;
+      }
+
+      const { data } = await supabase
+        .from('workspaces')
+        .select('name')
+        .eq('id', activeWorkspaceId)
+        .single();
+
+      if (data) {
+        console.log('Found workspace:', data);
+        setWorkspaceName(data.name);
+      }
+    }
+
+    console.log('Fetching workspace name for ID:', activeWorkspaceId);
+    getWorkspaceName();
+  }, [activeWorkspaceId]);
 
   return (
-    <header className="relative">
-      {/* Top Gradient Bar */}
-      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500" />
-
-      {/* Header Content */}
-      <div className="bg-gray-900/80 backdrop-blur-xl shadow-2xl">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            {/* AI Assistant Button */}
-            <div className="relative">
-              <Link href="/ai-chat" className="relative z-10 flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-pink-500 via-purple-500 to-blue-500 shadow-lg hover:shadow-xl hover:scale-110 transition-transform">
-                <img
-                  src="https://media.tenor.com/NeaT_0PBOzQAAAAM/robot-reaction-eww.gif"
-                  alt="AI Assistant"
-                  className="w-8 h-8"
-                />
-              </Link>
-            </div>
-
-            {/* Logo */}
-            <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-              ChatGenius
-            </div>
-
-            {/* Navigation Buttons */}
-            <div className="flex items-center gap-3">
-              <NavButton
-                onClick={onReturnToWorkspaceSelection}
-                icon={<PlusCircle className="w-5 h-5" />}
-                label="New"
-                hoverColor="blue-400"
-                title="Return to Workspace Selection"
-              />
-
-              <NavButton
-                onClick={onOpenProfile}
-                icon={<User className="w-5 h-5" />}
-                label="Profile"
-                hoverColor="pink-400"
-              />
-
-              <NavButton
-                onClick={toggleDarkMode}
-                icon={isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                label={isDarkMode ? "Light" : "Dark"}
-                hoverColor="yellow-400"
-              />
-
-              <NavButton
-                onClick={onLogout}
-                icon={<LogOut className="w-5 h-5" />}
-                label="Logout"
-                hoverColor="red-400"
-                title="Logout"
-              />
-            </div>
+    <header className="relative z-50">
+      <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-10" />
+      
+      <div className="relative bg-gray-900/95 backdrop-blur-xl border-b border-white/10">
+        <div className="h-16 flex items-center justify-between">
+          {/* Left - Workspace Name */}
+          <div className="pl-5">
+            <h1 className="text-lg font-semibold text-white">
+              {workspaceName || "Select a Workspace"}
+              {workspaceName && <span className="text-gray-400 text-sm font-normal ml-2">Workspace</span>}
+            </h1>
           </div>
+
+          {/* Right - Icons */}
+          <nav className="flex items-center">
+            <Link 
+              href="/ai-chat" 
+              className="relative group p-2"
+            >
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="relative z-10 flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-pink-500 p-0.5"
+              >
+                <div className="w-full h-full bg-gray-900 rounded-md flex items-center justify-center">
+                  <img
+                    src="https://media.tenor.com/NeaT_0PBOzQAAAAM/robot-reaction-eww.gif"
+                    alt="AI Assistant"
+                    className="w-5 h-5 rounded"
+                  />
+                </div>
+              </motion.div>
+            </Link>
+            <NavButton
+              onClick={onReturnToWorkspaceSelection}
+              icon={<PlusCircle className="w-5 h-5" />}
+              label="New Workspace"
+            />
+            <NavButton
+              onClick={onOpenProfile}
+              icon={<User className="w-5 h-5" />}
+              label="Profile"
+            />
+            <NavButton
+              onClick={toggleDarkMode}
+              icon={isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              label={isDarkMode ? "Light Mode" : "Dark Mode"}
+            />
+            <div className="w-px h-6 bg-white/10 mx-1" />
+            <NavButton
+              onClick={onLogout}
+              icon={<LogOut className="w-5 h-5" />}
+              label="Logout"
+            />
+          </nav>
         </div>
       </div>
     </header>

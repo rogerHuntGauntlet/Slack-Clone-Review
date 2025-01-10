@@ -93,7 +93,7 @@ const UserStatus: React.FC<UserStatusProps> = ({ currentUser }) => {
           status === 'offline' ? 'bg-yellow-500' :
           'bg-red-500'
         }`} />
-        <span className="font-medium text-white">{displayName}</span>
+        <span className="font-medium text-white">{displayName} (me)</span>
         <ChevronDown size={16} className="text-white" />
       </button>
       {isDropdownOpen && (

@@ -6,7 +6,12 @@ module.exports = {
   ],
   darkMode: 'class',
   theme: {
-    extend: {},
+    extend: {
+      scrollbar: ['rounded'],
+    },
   },
   plugins: [],
+  corePlugins: {
+    scrollbar: false
+  }
 } 

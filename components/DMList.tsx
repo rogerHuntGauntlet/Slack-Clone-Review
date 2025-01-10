@@ -36,7 +36,7 @@ export default function DMList({ workspaceId, onSelectDM, activeUserId }: DMList
     <div className="bg-gray-800 text-white p-4 w-64 h-full flex flex-col">
       <h2 className="text-xl font-bold mb-4">Direct Messages</h2>
       <div className="flex-grow pr-2">
-        <ul className="flex-grow overflow-y-auto space-y-1 pr-2">
+        <ul className="flex-grow overflow-y-auto space-y-1 pr-2 custom-scrollbar">
           {users.map((user) => (
             <li key={user.id}>
               <button

@@ -48,7 +48,7 @@ export default function AIChatPage() {
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">AI Assistant</h1>
       </header>
-      <main className="flex-1 overflow-auto p-4">
+      <main className="flex-1 overflow-auto p-4 custom-scrollbar">
         <div className="max-w-3xl mx-auto">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-4">
             <p className="text-sm italic text-gray-600 dark:text-gray-400">{currentPrompt}</p>
