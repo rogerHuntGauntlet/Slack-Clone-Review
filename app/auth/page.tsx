@@ -8,6 +8,8 @@ import { FaGithub, FaGoogle } from 'react-icons/fa'
 import { Eye, EyeOff } from 'lucide-react'
 import { motion } from 'framer-motion'
 
+console.log('🔐 [Auth] Auth page loaded');
+
 const PASSWORD_MIN_LENGTH = 8
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
 
@@ -27,6 +29,7 @@ interface AuthContentProps {
 }
 
 function AuthContent({ workspaceId }: AuthContentProps) {
+  console.log('🔐 [Auth] AuthContent rendered with workspaceId:', workspaceId);
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -43,6 +46,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
   const supabase = createClientComponentClient()
 
   useEffect(() => {
+    console.log('🔐 [Auth] Checking for workspace details...');
     if (workspaceId) {
       fetchWorkspaceDetails()
     }
@@ -306,6 +310,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
                   className={`mt-1 block w-full rounded-xl bg-white/5 border ${validationErrors.password ? 'border-red-500' : 'border-white/10'
                     } text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-all duration-300 h-12 px-4 pr-10`}
                   placeholder="••••••••"
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
@@ -374,12 +379,14 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 }
 
 function AuthParams() {
+  console.log('🔐 [Auth] AuthParams component mounted');
   const searchParams = useSearchParams()
   const workspaceId = searchParams.get('workspaceId')
   return <AuthContent workspaceId={workspaceId} />
 }
 
 export default function Auth() {
+  console.log('🔐 [Auth] Main Auth component mounted');
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>

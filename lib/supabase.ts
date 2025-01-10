@@ -42,24 +42,46 @@ interface MessageReactionPayload {
   eventType: 'UPDATE';
 }
 
+console.log('🔧 [Supabase] Starting Supabase initialization...');
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-// Add verbose logging for debugging
-console.log('Environment check:', {
+console.log('🔧 [Supabase] Environment check:', {
   hasUrl: !!supabaseUrl,
   hasKey: !!supabaseKey,
   url: supabaseUrl?.slice(0, 8) + '...',  // Only log the start of the URL for security
-})
+});
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing Supabase environment variables!')
-  throw new Error('Missing required environment variables for Supabase configuration')
+  console.error('❌ [Supabase] Missing required environment variables!');
+  throw new Error('Missing required environment variables for Supabase configuration');
 }
 
-console.log('Initializing Supabase client with URL:', supabaseUrl)
+console.log('✅ [Supabase] Creating Supabase client...');
+export const supabase = createClient(supabaseUrl, supabaseKey);
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export const testSupabaseConnection = async () => {
+  try {
+    console.log('🔄 [Supabase] Testing connection...');
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('count', { count: 'exact', head: true });
+    
+    if (error) {
+      console.error('❌ [Supabase] Connection test error:', error);
+      throw error;
+    }
+    console.log('✅ [Supabase] Connection test successful');
+    return true;
+  } catch (error) {
+    console.error('❌ [Supabase] Connection test failed:', error);
+    return false;
+  }
+};
+
+// Test the connection immediately
+testSupabaseConnection();
 
 // Add a helper function to check auth status
 const checkAuth = async () => {
@@ -1089,21 +1111,6 @@ export const getUserCount = async () => {
   } catch (error) {
     console.error('Error fetching user count:', error);
     return 0;
-  }
-};
-
-export const testSupabaseConnection = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('count', { count: 'exact', head: true });
-    
-    if (error) throw error;
-    console.log('Supabase connection successful');
-    return true;
-  } catch (error) {
-    console.error('Supabase connection failed:', error);
-    return false;
   }
 };
 
