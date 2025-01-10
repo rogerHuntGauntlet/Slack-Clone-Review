@@ -460,14 +460,15 @@ export const testDatabaseTables = async () => {
 };
 
 export const getWorkspaces = async () => {
+  console.log('🏢 [getWorkspaces] Starting to fetch workspaces...');
   try {
     const { data: { session }, error: authError } = await supabase.auth.getSession();
     if (authError || !session) {
-      console.error('Auth error:', authError);
+      console.error('❌ [getWorkspaces] Auth error:', authError);
       return [];
     }
 
-    console.log('Getting workspaces for auth user:', session.user.id);
+    console.log('👤 [getWorkspaces] Authenticated user:', session.user.id);
 
     // Get workspace details directly
     const { data, error } = await supabase
@@ -483,11 +484,11 @@ export const getWorkspaces = async () => {
       .eq('user_id', session.user.id);
 
     if (error) {
-      console.error('Error fetching workspaces:', error);
+      console.error('❌ [getWorkspaces] Error fetching workspaces:', error);
       return [];
     }
 
-    console.log('Raw workspace data:', data);
+    console.log('📋 [getWorkspaces] Raw workspace data:', data);
 
     const workspaces = data.map((item: any) => ({
       id: item.workspaces.id,
@@ -495,10 +496,10 @@ export const getWorkspaces = async () => {
       role: item.role,
     }));
 
-    console.log('Processed workspaces:', workspaces);
+    console.log('✅ [getWorkspaces] Processed workspaces:', workspaces);
     return workspaces;
   } catch (error) {
-    console.error('Error in getWorkspaces:', error);
+    console.error('❌ [getWorkspaces] Error:', error);
     return [];
   }
 };
@@ -607,12 +608,18 @@ const createAiWelcomeDm = async (workspaceName: string, creatorId: string, aiUse
 };
 
 export const createWorkspace = async (name: string) => {
+  console.log('🏗️ [createWorkspace] Starting workspace creation:', { name });
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not authenticated');
+    if (!session) {
+      console.error('❌ [createWorkspace] Not authenticated');
+      throw new Error('Not authenticated');
+    }
+    console.log('👤 [createWorkspace] User authenticated:', session.user.id);
 
     // Get or create AI user profile
-    const AI_USER_ID = '00000000-0000-0000-0000-000000000000'; // Fixed UUID for AI user
+    const AI_USER_ID = '00000000-0000-0000-0000-000000000000';
+    console.log('🤖 [createWorkspace] Looking for AI user...');
 
     let { data: aiUser } = await supabase
       .from('user_profiles')
@@ -621,9 +628,7 @@ export const createWorkspace = async (name: string) => {
       .single();
 
     if (!aiUser) {
-      console.log('AI user not found, creating...');
-      
-      // Create the user profile with fixed ID
+      console.log('🤖 [createWorkspace] AI user not found, creating...');
       const { data: newAiUser, error: aiError } = await supabase
         .from('user_profiles')
         .insert({
@@ -636,11 +641,16 @@ export const createWorkspace = async (name: string) => {
         .select()
         .single();
 
-      if (aiError) throw aiError;
+      if (aiError) {
+        console.error('❌ [createWorkspace] Error creating AI user:', aiError);
+        throw aiError;
+      }
       aiUser = newAiUser;
+      console.log('✅ [createWorkspace] AI user created:', aiUser);
     }
 
     // Create the workspace
+    console.log('🏢 [createWorkspace] Creating workspace...');
     const { data: workspace, error: workspaceError } = await supabase
       .from('workspaces')
       .insert({
@@ -650,9 +660,14 @@ export const createWorkspace = async (name: string) => {
       .select()
       .single();
 
-    if (workspaceError) throw workspaceError;
+    if (workspaceError) {
+      console.error('❌ [createWorkspace] Error creating workspace:', workspaceError);
+      throw workspaceError;
+    }
+    console.log('✅ [createWorkspace] Workspace created:', workspace);
 
     // Add the creator as admin
+    console.log('👑 [createWorkspace] Adding creator as admin...');
     const { error: memberError } = await supabase
       .from('workspace_members')
       .insert({
@@ -661,7 +676,10 @@ export const createWorkspace = async (name: string) => {
         role: 'admin'
       });
 
-    if (memberError) throw memberError;
+    if (memberError) {
+      console.error('❌ [createWorkspace] Error adding creator as admin:', memberError);
+      throw memberError;
+    }
 
     // Add AI user to workspace
     await supabase
@@ -882,13 +900,14 @@ export const createWorkspace = async (name: string) => {
 
     if (welcomeDmError) throw new Error('Failed to create welcome DM');
 
+    console.log('✅ [createWorkspace] Workspace setup completed successfully');
     return {
       workspace,
       channels
     };
 
   } catch (error) {
-    console.error('Error in createWorkspace:', error);
+    console.error('❌ [createWorkspace] Error:', error);
     throw error;
   }
 };
