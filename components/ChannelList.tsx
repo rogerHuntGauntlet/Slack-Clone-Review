@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, Hash } from 'lucide-react'
-import { createChannel, getChannels } from '../lib/supabase'
+import { createChannel, getChannels, updateChannelView } from '../lib/supabase/channels'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'react-hot-toast'
 
@@ -15,6 +15,7 @@ interface ChannelListProps {
 interface Channel {
   id: string
   name: string
+  unread_count?: number
 }
 
 export default function ChannelList({ channels, activeChannel, onChannelSelect, workspaceId, currentUser }: ChannelListProps) {
@@ -26,6 +27,23 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
   useEffect(() => {
     setLocalChannels(channels)
   }, [channels])
+
+  const handleChannelSelect = async (channelId: string) => {
+    onChannelSelect(channelId)
+    try {
+      await updateChannelView(channelId)
+      // Update local unread count
+      setLocalChannels(prevChannels =>
+        prevChannels.map(channel =>
+          channel.id === channelId
+            ? { ...channel, unread_count: 0 }
+            : channel
+        )
+      )
+    } catch (error) {
+      console.error('Error updating channel view:', error)
+    }
+  }
 
   const handleAddChannel = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -110,10 +128,15 @@ export default function ChannelList({ channels, activeChannel, onChannelSelect, 
                   ? 'bg-gray-700/80 text-white' 
                   : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
               }`}
-              onClick={() => onChannelSelect(channel.id)}
+              onClick={() => handleChannelSelect(channel.id)}
             >
               <Hash size={16} className="flex-shrink-0" />
               <span className="truncate">{channel.name}</span>
+              {channel.unread_count ? (
+                <span className="ml-auto bg-indigo-500 text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                  {channel.unread_count > 99 ? '99+' : channel.unread_count}
+                </span>
+              ) : null}
             </motion.button>
           ))}
         </AnimatePresence>
