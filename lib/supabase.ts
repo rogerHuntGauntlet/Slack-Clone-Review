@@ -391,7 +391,19 @@ export async function createChannel(name: string, workspaceId: string, creatorId
 
 export async function createUserProfile(email: string) {
   try {
-    const username = email.split('@')[0]; // Extract username from email
+    // First, check if user already exists
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single()
+
+    if (existingUser) {
+      return existingUser
+    }
+
+    // If user doesn't exist, create new profile
+    const username = email.split('@')[0]
     const { data, error } = await supabase
       .from('users')
       .insert({ email, username })
