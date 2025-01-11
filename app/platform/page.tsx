@@ -41,7 +41,7 @@ interface WorkspaceListProps {
 
 export default function Platform() {
   const [logs, setLogs] = useState<string[]>([])
-  
+
   const addLog = (message: string) => {
     setLogs(prev => [...prev, `${new Date().toLocaleTimeString()} - ${message}`])
   }
@@ -49,7 +49,7 @@ export default function Platform() {
   useEffect(() => {
     // Set up logger only once when component mounts
     logger.log = addLog
-    
+
     // Initial logs
     addLog('Platform mounting')
     addLog(`Environment: ${process.env.NODE_ENV}`)
@@ -59,13 +59,15 @@ export default function Platform() {
       logger.log = console.log // Reset logger on unmount
     }
   }, []) // Empty dependency array means this only runs once on mount
-
+  return (<PlatformContent addLog={addLog} />)
+  /** 
   return (
     <Suspense fallback={<div>Loading...</div>}>
       <LogDisplay logs={logs} />
       <PlatformContent addLog={addLog} />
     </Suspense>
   )
+  */
 }
 
 function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
@@ -98,7 +100,7 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
   useEffect(() => {
     const initializePlatform = async () => {
       addLog('PlatformContent component initializing...')
-      
+
       try {
         // Check user session
         const { data: { session } } = await supabase.auth.getSession()
@@ -125,11 +127,11 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
         // Clear workspace state
         setActiveWorkspace('')
         setActiveChannel('')
-        
+
         // Fetch workspaces
         const fetchedWorkspaces = await getWorkspaces(session.user.id)
         setWorkspaces(fetchedWorkspaces)
-        
+
         // Always show workspace selection
         setShowWorkspaceSelection(true)
 
@@ -181,7 +183,7 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
     try {
       logger.log(`Fetching channels for workspace ${workspaceId} and user ${user.id}`)
       const channels = await getChannels(workspaceId, user.id)
-      
+
       if (channels.length > 0) {
         logger.log(`Setting active channel to ${channels[0].id}`)
         setActiveChannel(channels[0].id)
@@ -222,7 +224,7 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
 
       let userData = await getUserByEmail(email)
       const isNewUser = !userData
-      
+
       if (isNewUser) {
         if (userCount >= MAX_USERS) {
           setError("We've reached our user limit. Please check back later.")
@@ -241,7 +243,7 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
       if (userData) {
         // Set user data
         setUser({ id: userData.id, email: userData.email, username: userData.username })
-        
+
         // Clear workspace state and show selection
         setActiveWorkspace('')
         setActiveChannel('')
@@ -270,7 +272,7 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
       setError('Please enter a workspace name')
       return
     }
-    
+
     try {
       addLog('Creating workspace...')
 
@@ -302,13 +304,13 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
       }
 
       addLog('Workspace created successfully')
-      setWorkspaces(prevWorkspaces => [...prevWorkspaces, { 
+      setWorkspaces(prevWorkspaces => [...prevWorkspaces, {
         id: result.workspace.id,
         name: result.workspace.name,
         role: 'admin'
       }])
       setNewWorkspaceName('')
-      
+
       // Don't automatically enter the workspace, let user choose
       addLog('Workspace created, staying on selection screen')
     } catch (error: any) {
@@ -326,15 +328,15 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
     try {
       addLog(`Joining workspace ${workspaceId}...`)
       await joinWorkspace(workspaceId, user.id)
-      
+
       // Fetch updated workspaces list
       const updatedWorkspaces = await getWorkspaces(user.id)
       setWorkspaces(updatedWorkspaces)
       setUserWorkspaceIds(updatedWorkspaces.map((workspace: { id: string }) => workspace.id))
-      
+
       // Clear the joining state
       setJoiningWorkspaceName(null)
-      
+
       addLog(`Successfully joined workspace ${workspaceId}`)
       return updatedWorkspaces
     } catch (error) {
@@ -358,16 +360,16 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
     try {
       logger.log(`Selecting workspace ${workspaceId}`)
       setActiveWorkspace(workspaceId)
-      
+
       // Clear current channel
       setActiveChannel('')
-      
+
       // Fetch channels
       await fetchChannels(workspaceId)
-      
+
       // Hide workspace selection
       setShowWorkspaceSelection(false)
-      
+
       logger.log('Workspace selection complete')
     } catch (error) {
       logger.error('Error selecting workspace:', error)
@@ -409,10 +411,10 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
     try {
       // Clear all Supabase cache
       await supabase.auth.signOut({ scope: 'global' })
-      
+
       // Clear session storage
       sessionStorage.clear()
-      
+
       // Clear local storage items related to Supabase
       Object.keys(localStorage)
         .filter(key => key.startsWith('sb-'))
@@ -435,7 +437,7 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
       setSearchQuery('')
       setSearchResults([])
       setShowSearchResults(false)
-      
+
       // Navigate to auth page
       router.push('/auth')
     } catch (error) {
@@ -453,7 +455,7 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
 
   const handleSearch = async (query: string) => {
     if (!query.trim() || !activeWorkspace) return;
-    
+
     try {
       logger.log(`Searching for: "${query}" in workspace ${activeWorkspace}`)
       const { data, error } = await supabase

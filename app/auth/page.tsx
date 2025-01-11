@@ -8,7 +8,19 @@ import { FaGithub, FaGoogle } from 'react-icons/fa'
 import { Eye, EyeOff } from 'lucide-react'
 import { motion } from 'framer-motion'
 
-console.log('🔐 [Auth] Auth page loaded');
+const DEBUG_EMAIL = 'regorhunt02052@gmail.com'
+
+const debugLog = (message: string, data?: any) => {
+  if (typeof window === 'undefined') return; // Don't run during SSR
+  const currentEmail = sessionStorage.getItem('userEmail')
+  if (currentEmail === DEBUG_EMAIL) {
+    if (data) {
+      console.log(message, data)
+    } else {
+      console.log(message)
+    }
+  }
+}
 
 const PASSWORD_MIN_LENGTH = 8
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
@@ -29,7 +41,6 @@ interface AuthContentProps {
 }
 
 function AuthContent({ workspaceId }: AuthContentProps) {
-  console.log('🔐 [Auth] AuthContent rendered with workspaceId:', workspaceId);
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -46,8 +57,9 @@ function AuthContent({ workspaceId }: AuthContentProps) {
   const supabase = createClientComponentClient()
 
   useEffect(() => {
-    console.log('🔐 [Auth] Checking for workspace details...');
+    debugLog('🔐 [Auth] AuthContent rendered with workspaceId:', workspaceId);
     if (workspaceId) {
+      debugLog('🔐 [Auth] Checking for workspace details...');
       fetchWorkspaceDetails()
     }
   }, [workspaceId])
@@ -106,7 +118,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
       if (error) throw error
       setWorkspaceName(data.name)
     } catch (error) {
-      console.error('Error fetching workspace details:', error)
+      debugLog('Error fetching workspace details:', error)
       setError('Failed to fetch workspace details')
     }
   }
@@ -127,7 +139,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 
       if (error) throw error
     } catch (error) {
-      console.error('Error adding user to workspace:', error)
+      debugLog('Error adding user to workspace:', error)
       throw error
     }
   }
@@ -140,7 +152,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
     setError(null)
 
     try {
-      console.log('Signing in...')
+      debugLog('Signing in...')
       setMessage('Signing in...')
       const { data: { user }, error } = await supabase.auth.signInWithPassword({
         email,
@@ -159,7 +171,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
         email: user.email
       })
       
-      console.log('User profile created...', userProfile)
+      debugLog('User profile created...', userProfile)
       if (workspaceId && userProfile) {
         await addUserToWorkspace(userProfile.id)
         router.push('/platform')
@@ -389,14 +401,12 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 }
 
 function AuthParams() {
-  console.log('🔐 [Auth] AuthParams component mounted');
   const searchParams = useSearchParams()
   const workspaceId = searchParams.get('workspaceId')
   return <AuthContent workspaceId={workspaceId} />
 }
 
 export default function Auth() {
-  console.log('🔐 [Auth] Main Auth component mounted');
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
