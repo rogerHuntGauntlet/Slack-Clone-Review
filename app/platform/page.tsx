@@ -412,37 +412,8 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
 
   const handleLogout = async () => {
     try {
-      // Clear all Supabase cache
-      await supabase.auth.signOut({ scope: 'global' })
-
-      // Clear session storage
-      sessionStorage.clear()
-
-      // Clear local storage items related to Supabase
-      Object.keys(localStorage)
-        .filter(key => key.startsWith('sb-'))
-        .forEach(key => localStorage.removeItem(key))
-
-      // Reset all state
-      setUser(null)
-      setActiveWorkspace('')
-      setActiveChannel('')
-      setActiveDM(null)
-      setWorkspaces([])
-      setNewWorkspaceName('')
-      setError(null)
-      setSuccess(null)
-      setShowProfileModal(false)
-      setJoiningWorkspaceName(null)
-      setShowWorkspaceSelection(false)
-      setUserWorkspaceIds([])
-      setUserCount(0)
-      setSearchQuery('')
-      setSearchResults([])
-      setShowSearchResults(false)
-
-      // Navigate to auth page
-      router.push('/auth')
+      // Only redirect to logout page, let the logout page handle the cleanup
+      router.push('/logout')
     } catch (error) {
       logger.error('Error signing out:', error)
       setError('Failed to sign out. Please try again.')

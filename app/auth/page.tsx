@@ -42,6 +42,8 @@ interface AuthContentProps {
 
 function AuthContent({ workspaceId }: AuthContentProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const wasIntentionalLogout = searchParams.get('intentional_logout') === 'true'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -95,6 +97,10 @@ function AuthContent({ workspaceId }: AuthContentProps) {
         provider,
         options: {
           redirectTo: `${location.origin}/auth/callback`,
+          data: {
+            is_new_signup: true,
+            signup_timestamp: new Date().toISOString()
+          }
         },
       })
       if (error) throw error
@@ -165,16 +171,42 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 
       // Ensure user profile exists
       if (!user) throw new Error('No user data after sign in')
-      
-      const userProfile = await createUserProfile({
-        id: user.id,
-        email: user.email
-      })
-      
-      debugLog('User profile created...', userProfile)
-      if (workspaceId && userProfile) {
-        await addUserToWorkspace(userProfile.id)
+
+      // If this was an intentional logout, go straight to platform
+      if (wasIntentionalLogout) {
         router.push('/platform')
+        return
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+
+      // Check if user needs onboarding
+      const needsOnboarding = !profile || profileError
+      if (needsOnboarding) {
+        debugLog('User needs onboarding, redirecting...')
+        router.push('/onboarding')
+        return
+      }
+
+      // Check if user has any workspaces
+      const { data: workspaces, error: workspacesError } = await supabase
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('user_id', user.id)
+
+      if (!workspaces || workspaces.length === 0) {
+        debugLog('No workspaces found, redirecting to onboarding...')
+        router.push('/onboarding')
+        return
+      }
+
+      // Otherwise handle workspace join if needed
+      if (workspaceId) {
+        await addUserToWorkspace(user.id)
       }
 
       router.push('/platform')
@@ -200,25 +232,19 @@ function AuthContent({ workspaceId }: AuthContentProps) {
         password,
         options: {
           emailRedirectTo: `${location.origin}/auth/callback`,
+          data: {
+            is_new_signup: true // Add metadata to identify new signups
+          }
         },
       })
       if (error) throw error
       if (!user) throw new Error('No user data after sign up')
 
-      // Create user profile
-      const userProfile = await createUserProfile({
-        id: user.id,
-        email: user.email
-      })
-
-      if (workspaceId && userProfile) {
-        setMessage('Profile created. Adding you to workspace...')
-        await addUserToWorkspace(userProfile.id)
-        router.push('/platform')
-      }
-
-      setMessage('Profile created. You will receive an email to verify your account.')
-      //router.push('/platform')
+      // Don't create profile here - let the onboarding flow handle it
+      setMessage('Account created! You will receive an email to verify your account. After verification, you will be guided through the onboarding process.')
+      
+      // Store email for debug logging
+      sessionStorage.setItem('userEmail', email)
     } catch (error: any) {
       setError(error.message)
     } finally {
