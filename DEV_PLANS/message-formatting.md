@@ -6,18 +6,18 @@ Implementation of Slack-like message formatting features to enhance user communi
 ## Requirements
 
 ### 1. Basic Text Formatting
-- [ ] Bold text formatting
+- [X ] Bold text formatting
   - Markdown syntax: `**text**`
   - Keyboard shortcut: Ctrl+B
   - Button in formatting toolbar
-- [ ] Italic text formatting
+- [X ] Italic text formatting
   - Markdown syntax: `*text*`
   - Keyboard shortcut: Ctrl+I
   - Button in formatting toolbar
-- [ ] Strikethrough text
+- [ X] Strikethrough text
   - Markdown syntax: `~~text~~`
   - Button in formatting toolbar
-- [ ] Code fragment (inline)
+- [X ] Code fragment (inline)
   - Markdown syntax: `` `code` ``
   - Button in formatting toolbar
 - [ ] Code block (multiline)
