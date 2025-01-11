@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import {
   supabase,
   getWorkspaces,
@@ -24,7 +24,6 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import CollapsibleDMList from '../../components/CollapsibleDMList'
 import DirectMessageArea from '../../components/DirectMessageArea'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { Suspense } from 'react'
 import type { Workspace } from '@/types/supabase'
 import ActivityFeed from '../../components/ActivityFeed'
 import logger from '@/lib/logger'
@@ -59,18 +58,23 @@ export default function Platform() {
       logger.log = console.log // Reset logger on unmount
     }
   }, []) // Empty dependency array means this only runs once on mount
-  return (<PlatformContent addLog={addLog} />)
-  /** 
+
   return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <LogDisplay logs={logs} />
-      <PlatformContent addLog={addLog} />
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+    </div>}>
+      <PlatformWithParams addLog={addLog} />
     </Suspense>
   )
-  */
 }
 
-function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
+function PlatformWithParams({ addLog }: { addLog: (message: string) => void }) {
+  const searchParams = useSearchParams()
+  const workspaceId = searchParams.get('workspaceId')
+  return <PlatformContent addLog={addLog} initialWorkspaceId={workspaceId} />
+}
+
+function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: string) => void, initialWorkspaceId: string | null }) {
   const [user, setUser] = useState<{ id: string; email: string; username?: string } | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState('')
   const [activeChannel, setActiveChannel] = useState('')
@@ -89,7 +93,6 @@ function PlatformContent({ addLog }: { addLog: (message: string) => void }) {
   const [email, setEmail] = useState('')
   const MAX_USERS = 40
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [isChatExpanded, setIsChatExpanded] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
