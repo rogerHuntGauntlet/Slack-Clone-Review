@@ -5,6 +5,7 @@ import { useTheme } from 'next-themes';
 import type { MessageType } from '../types/database';
 import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
+import ReactMarkdown from 'react-markdown';
 
 const AVAILABLE_REACTIONS = ['👍', '❤️', '😂', '🎉', '🚀', '👀', '💯', '🙌', '🤔', '🔥'];
 
@@ -215,264 +216,225 @@ const Message: React.FC<MessageProps> = ({
   const hasReplies = (message.reply_count ?? 0) > 0;
 
   return (
-    <div 
-      className={`p-4 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${className}`} 
+    <div
       id={`message-${message.id}`}
+      className={`group relative flex items-start space-x-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 p-2 rounded-lg transition-colors ${className}`}
     >
-      <div className="flex items-start gap-3 min-w-0">
-        <div className="flex-shrink-0">
-          <div className="relative w-10 h-10">
-            <Image
-              src={message.user?.avatar_url || `https://www.gravatar.com/avatar/${message.user?.id || '0'}?d=mp&f=y`}
-              alt={message.user?.username || 'Unknown User'}
-              width={40}
-              height={40}
-              className="rounded-full w-10 h-10 object-cover"
-              unoptimized={message.user?.avatar_url?.startsWith('https://www.gravatar.com')}
-              priority={true}
-            />
-          </div>
-        </div>
-        
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2 min-w-0 group">
-            <span className="font-semibold truncate">{message.user?.username || 'Unknown User'}</span>
-            <span className="text-xs text-gray-500 flex-shrink-0">
-              {message.created_at ? new Date(message.created_at).toLocaleString() : ''}
-              {message.updated_at && message.updated_at !== message.created_at && (
-                <span className="ml-1 text-gray-400">(edited)</span>
-              )}
-            </span>
-            {message.user_id === currentUser.id && (
-              <div className="relative ml-auto opacity-40 group-hover:opacity-100 transition-opacity" ref={menuRef}>
-                <button
-                  onClick={() => setShowMenu(!showMenu)}
-                  className="p-1.5 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-                >
-                  <MoreVertical size={14} />
-                </button>
-                {showMenu && (
-                  <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
-                    <button
-                      onClick={() => {
-                        setIsEditing(true);
-                        setShowMenu(false);
-                      }}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                      <Pencil size={14} />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowDeleteConfirm(true);
-                        setShowMenu(false);
-                      }}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                      <Trash2 size={14} />
-                      Delete
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {isEditing ? (
-            <div className="mt-1">
-              <textarea
-                ref={editInputRef}
-                value={editedContent}
-                onChange={(e) => setEditedContent(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow resize-none"
-                rows={3}
-              />
-              <div className="flex items-center gap-2 mt-2">
-                <button
-                  onClick={handleEdit}
-                  disabled={!editedContent.trim()}
-                  className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Check size={14} />
-                  Save
-                </button>
-                <button
-                  onClick={() => {
-                    setIsEditing(false);
-                    setEditedContent(message.content || '');
-                  }}
-                  className="flex items-center gap-1 px-3 py-1 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
-                >
-                  <X size={14} />
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className="mt-1 text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
-              {message.content || ''}
-            </p>
-          )}
-
-          {message.file_attachments && message.file_attachments.length > 0 && (
-            <div className="mt-2 space-y-2">
-              {message.file_attachments.map((attachment, index) => (
-                <div 
-                  key={`${message.id}-attachment-${index}`}
-                  className="inline-block max-w-xs"
-                >
-                  {attachment.file_type?.startsWith('image/') ? (
-                    <a 
-                      key={`image-${index}`}
-                      href={attachment.file_url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="block"
-                    >
-                      <img
-                        src={attachment.file_url}
-                        alt={attachment.file_name || 'Attachment'}
-                        className="max-h-60 rounded-lg object-cover shadow-sm hover:shadow-md transition-shadow duration-200"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                        }}
-                      />
-                    </a>
-                  ) : (
-                    <a
-                      key={`file-${index}`}
-                      href={attachment.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200"
-                    >
-                      <FileText className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                      <span className="text-sm text-blue-600 dark:text-blue-400 truncate">
-                        {attachment.file_name || 'Download attachment'}
-                      </span>
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Reactions */}
-          <div className="flex flex-wrap gap-2 mt-2">
-            {Object.entries(reactions).map(([emoji, users]) => (
-              <button
-                key={emoji}
-                onClick={() => handleReaction(emoji)}
-                className={`inline-flex items-center px-2 py-1 rounded-full text-sm
-                  ${(users as string[]).includes(currentUser.id)
-                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
-                  } hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors`}
-              >
-                <span>{emoji}</span>
-                <span className="ml-1 text-xs font-medium">{(users as string[]).length}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center space-x-2 mt-2">
-            <div className="relative" ref={reactionPickerRef}>
-              <button
-                onClick={() => setShowReactionPicker(!showReactionPicker)}
-                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-                title="Add reaction"
-              >
-                <Smile size={20} />
-              </button>
-              {showReactionPicker && (
-                <div className="absolute bottom-full left-0 z-50 p-2 bg-white dark:bg-gray-800 shadow-lg rounded-lg border dark:border-gray-700">
-                  <div className="flex gap-2">
-                    {AVAILABLE_REACTIONS.map((emoji) => (
-                      <button
-                        key={emoji}
-                        onClick={() => handleReaction(emoji)}
-                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                      >
-                        <span className="text-xl">{emoji}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-            {onReplyClick && (
-              <button
-                onClick={() => onReplyClick(message)}
-                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 flex items-center gap-1"
-                title="Reply in thread"
-              >
-                <MessageSquare size={20} />
-                {message.reply_count > 0 && (
-                  <span className="text-xs font-medium">{message.reply_count}</span>
-                )}
-              </button>
-            )}
-          </div>
-
-          {/* Thread Replies */}
-          {hasReplies && !isThreadView && (
-            <div className="mt-2">
-              <button
-                onClick={() => setShowReplies(!showReplies)}
-                className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
-              >
-                {showReplies ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                {message.reply_count} {message.reply_count === 1 ? 'reply' : 'replies'}
-              </button>
-              {showReplies && (
-                <div className="mt-2 ml-4 border-l-2 border-gray-200 dark:border-gray-700">
-                  {isLoadingReplies ? (
-                    <div className="p-2 text-sm text-gray-500">Loading replies...</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {replies.map((reply) => (
-                        <Message
-                          key={reply.id}
-                          message={reply}
-                          currentUser={currentUser}
-                          className="pl-4"
-                          isThreadView={true}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Thread View Replies */}
-          {hasReplies && isThreadView && (
-            <div className="mt-2 ml-4 border-l-2 border-gray-200 dark:border-gray-700">
-              {isLoadingReplies ? (
-                <div className="p-2 text-sm text-gray-500">Loading replies...</div>
-              ) : (
-                <div className="space-y-2">
-                  {replies.map((reply) => (
-                    <Message
-                      key={reply.id}
-                      message={reply}
-                      currentUser={currentUser}
-                      className="pl-4"
-                      isThreadView={true}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+      <div className="flex-shrink-0">
+        <Image
+          src={message.user?.avatar_url || 'https://via.placeholder.com/40'}
+          alt={message.user?.username || 'User'}
+          width={40}
+          height={40}
+          className="rounded-full"
+        />
       </div>
 
-      {/* Delete Confirmation Dialog */}
+      <div className="flex-1 min-w-0 break-words">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-gray-900 dark:text-white">
+            {message.user?.username || 'Unknown User'}
+          </span>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {new Date(message.created_at).toLocaleTimeString()}
+          </span>
+          {message.is_edited && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">(edited)</span>
+          )}
+        </div>
+
+        {isEditing ? (
+          <textarea
+            ref={editInputRef}
+            value={editedContent}
+            onChange={(e) => setEditedContent(e.target.value)}
+            className="w-full mt-1 p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 break-words"
+          />
+        ) : (
+          <div className="mt-1 text-gray-900 dark:text-white whitespace-pre-wrap break-words">
+            <ReactMarkdown className="prose dark:prose-invert max-w-none break-words">
+              {message.content || ''}
+            </ReactMarkdown>
+          </div>
+        )}
+
+        {message.file_attachments && message.file_attachments.length > 0 && (
+          <div className="mt-2 space-y-2">
+            {message.file_attachments.map((attachment, index) => (
+              <div 
+                key={`${message.id}-attachment-${index}`}
+                className="inline-block max-w-xs"
+              >
+                {attachment.file_type?.startsWith('image/') ? (
+                  <a 
+                    key={`image-${index}`}
+                    href={attachment.file_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="block"
+                  >
+                    <img
+                      src={attachment.file_url}
+                      alt={attachment.file_name || 'Attachment'}
+                      className="max-h-60 rounded-lg object-cover shadow-sm hover:shadow-md transition-shadow duration-200"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                      }}
+                    />
+                  </a>
+                ) : (
+                  <a
+                    key={`file-${index}`}
+                    href={attachment.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200"
+                  >
+                    <FileText className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                    <span className="text-sm text-blue-600 dark:text-blue-400 truncate">
+                      {attachment.file_name || 'Download attachment'}
+                    </span>
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 mt-2">
+          {Object.entries(reactions).map(([emoji, users]) => (
+            <button
+              key={emoji}
+              onClick={() => handleReaction(emoji)}
+              className={`inline-flex items-center px-2 py-1 rounded-full text-sm
+                ${(users as string[]).includes(currentUser.id)
+                  ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
+                } hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors`}
+            >
+              <span>{emoji}</span>
+              <span className="ml-1 text-xs font-medium">{(users as string[]).length}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center space-x-2 mt-2">
+          <div className="relative" ref={reactionPickerRef}>
+            <button
+              onClick={() => setShowReactionPicker(!showReactionPicker)}
+              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+              title="Add reaction"
+            >
+              <Smile size={20} />
+            </button>
+            {showReactionPicker && (
+              <div className="absolute bottom-full left-0 z-50 p-2 bg-white dark:bg-gray-800 shadow-lg rounded-lg border dark:border-gray-700">
+                <div className="flex gap-2">
+                  {AVAILABLE_REACTIONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => handleReaction(emoji)}
+                      className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                    >
+                      <span className="text-xl">{emoji}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          {onReplyClick && (
+            <button
+              onClick={() => onReplyClick(message)}
+              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 flex items-center gap-1"
+              title="Reply in thread"
+            >
+              <MessageSquare size={20} />
+              {message.reply_count > 0 && (
+                <span className="text-xs font-medium">{message.reply_count}</span>
+              )}
+            </button>
+          )}
+        </div>
+
+        {hasReplies && !isThreadView && (
+          <div className="mt-2">
+            <button
+              onClick={() => setShowReplies(!showReplies)}
+              className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+            >
+              {showReplies ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              {message.reply_count} {message.reply_count === 1 ? 'reply' : 'replies'}
+            </button>
+            {showReplies && (
+              <div className="mt-2 ml-4 border-l-2 border-gray-200 dark:border-gray-700">
+                {isLoadingReplies ? (
+                  <div className="p-2 text-sm text-gray-500">Loading replies...</div>
+                ) : (
+                  <div className="space-y-2">
+                    {replies.map((reply) => (
+                      <Message
+                        key={reply.id}
+                        message={reply}
+                        currentUser={currentUser}
+                        className="pl-4"
+                        isThreadView={true}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {hasReplies && isThreadView && (
+          <div className="mt-2 ml-4 border-l-2 border-gray-200 dark:border-gray-700">
+            {isLoadingReplies ? (
+              <div className="p-2 text-sm text-gray-500">Loading replies...</div>
+            ) : (
+              <div className="space-y-2">
+                {replies.map((reply) => (
+                  <Message
+                    key={reply.id}
+                    message={reply}
+                    currentUser={currentUser}
+                    className="pl-4"
+                    isThreadView={true}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showMenu && (
+        <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+          <button
+            onClick={() => {
+              setIsEditing(true);
+              setShowMenu(false);
+            }}
+            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <Pencil size={14} />
+            Edit
+          </button>
+          <button
+            onClick={() => {
+              setShowDeleteConfirm(true);
+              setShowMenu(false);
+            }}
+            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <Trash2 size={14} />
+            Delete
+          </button>
+        </div>
+      )}
+
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">

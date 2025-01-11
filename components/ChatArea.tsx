@@ -4,7 +4,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSession } from '@supabase/auth-helpers-react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { toast } from 'react-hot-toast';
-import { X, FileText } from 'lucide-react';
+import { 
+  X, 
+  FileText, 
+  BoldIcon, 
+  ItalicIcon, 
+  StrikethroughIcon, 
+  CodeIcon, 
+  ListIcon, 
+  ListOrderedIcon, 
+  PaperclipIcon, 
+  SendIcon 
+} from 'lucide-react';
 import type { MessageType, FileAttachment } from '../types/database';
 import Message from './Message';
 import ReplyModal from './ReplyModal';
@@ -62,6 +73,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const threadMessagesEndRef = useRef<HTMLDivElement>(null);
   const mainChatRef = useRef<HTMLDivElement>(null);
   const threadChatRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Scroll to bottom when messages change and shouldScrollToBottom is true
   useEffect(() => {
@@ -406,6 +418,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       } else {
         setNewMessage('');
         setFileAttachments([]);
+        // Reset textarea height to default
+        const textarea = document.querySelector('textarea');
+        if (textarea) {
+          textarea.style.height = '64px';
+        }
       }
     } catch (error) {
       console.error('Error in handleSendMessage:', error);
@@ -449,12 +466,116 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   };
 
   const handleKeyPress = async (e: React.KeyboardEvent<HTMLTextAreaElement>, isThreadMessage: boolean = false) => {
+    // Handle list continuation on Enter
+    if (e.key === 'Enter' && !e.shiftKey) {
+      const textarea = e.currentTarget;
+      const text = textarea.value;
+      const cursorPos = textarea.selectionStart;
+      const currentLine = text.substring(0, cursorPos).split('\n').pop() || '';
+
+      // Check for list patterns
+      const bulletMatch = currentLine.match(/^(\s*)[•-]\s(.*)/);
+      const numberMatch = currentLine.match(/^(\s*)\d+\.\s(.*)/);
+
+      if (bulletMatch || numberMatch) {
+        e.preventDefault();
+        const [, indent, content] = bulletMatch || numberMatch || [];
+        
+        // If line is empty, end the list
+        if (!content.trim()) {
+          const newText = text.substring(0, cursorPos - (currentLine.length + 1)) + text.substring(cursorPos);
+          if (isThreadMessage) {
+            setNewThreadMessage(newText);
+          } else {
+            setNewMessage(newText);
+          }
+          return;
+        }
+
+        // Continue the list
+        const nextItem = bulletMatch ? `${indent}- ` : `${indent}${(text.substring(0, cursorPos).match(/\n/g) || []).length + 1}. `;
+        const newText = text.substring(0, cursorPos) + '\n' + nextItem + text.substring(cursorPos);
+        if (isThreadMessage) {
+          setNewThreadMessage(newText);
+        } else {
+          setNewMessage(newText);
+        }
+        return;
+      }
+    }
+
+    // Handle Tab for indentation
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = e.currentTarget;
+      const text = textarea.value;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+
+      // If text is selected, indent/outdent all selected lines
+      if (start !== end) {
+        const selectedText = text.substring(start, end);
+        const lines = selectedText.split('\n');
+        const newLines = lines.map(line => 
+          e.shiftKey ? line.replace(/^\s{2}/, '') : '  ' + line
+        );
+        const newText = text.substring(0, start) + newLines.join('\n') + text.substring(end);
+        if (isThreadMessage) {
+          setNewThreadMessage(newText);
+        } else {
+          setNewMessage(newText);
+        }
+        return;
+      }
+
+      // If no text is selected, just add/remove indentation at cursor
+      const newText = e.shiftKey
+        ? text.substring(0, start).replace(/\s{2}$/, '') + text.substring(end)
+        : text.substring(0, start) + '  ' + text.substring(end);
+      if (isThreadMessage) {
+        setNewThreadMessage(newText);
+      } else {
+        setNewMessage(newText);
+      }
+      return;
+    }
+
+    // Original Enter handling for sending message
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       const content = isThreadMessage ? newThreadMessage : newMessage;
       const attachments = isThreadMessage ? threadFileAttachments : fileAttachments;
       if (!content.trim() && attachments.length === 0) return;
       await handleSendMessage(e as any, isThreadMessage);
+    }
+
+    // Handle formatting shortcuts
+    if (e.ctrlKey || e.metaKey) {
+      const start = e.currentTarget.selectionStart;
+      const end = e.currentTarget.selectionEnd;
+      const text = e.currentTarget.value;
+      const before = text.substring(0, start);
+      const selection = text.substring(start, end);
+      const after = text.substring(end);
+
+      switch (e.key.toLowerCase()) {
+        case 'b':
+          e.preventDefault();
+          setNewMessage(`${before}**${selection}**${after}`);
+          break;
+        case 'i':
+          e.preventDefault();
+          setNewMessage(`${before}*${selection}*${after}`);
+          break;
+        case 'e':  // Ctrl+E for strikethrough
+          e.preventDefault();
+          setNewMessage(`${before}~~${selection}~~${after}`);
+          break;
+        case 'k':  // Ctrl+K for code
+          e.preventDefault();
+          setNewMessage(`${before}\`${selection}\`${after}`);
+          break;
+      }
     }
   };
 
@@ -489,6 +610,65 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     onThreadStateChange?.(false);
   };
 
+  const handleFormat = (before: string, after: string) => {
+    const textarea = document.querySelector('textarea');
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      const beforeText = text.substring(0, start);
+      const selection = text.substring(start, end);
+      const afterText = text.substring(end);
+      setNewMessage(`${beforeText}${before}${selection}${after}${afterText}`);
+      textarea.focus();
+    }
+  };
+
+  const handleListFormat = (format: 'bullet' | 'number') => {
+    const textarea = document.querySelector('textarea');
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      const before = text.substring(0, start);
+      const selection = text.substring(start, end);
+      const after = text.substring(end);
+      const lines = selection ? selection.split('\n') : [''];
+      const formattedList = lines.map(line => {
+        if (format === 'bullet') {
+          return `- ${line}`;
+        } else if (format === 'number') {
+          return `${lines.indexOf(line) + 1}. ${line}`;
+        }
+      }).join('\n');
+      setNewMessage(`${before}${formattedList}${after}`);
+      textarea.focus();
+    }
+  };
+
+  const handleFileClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    handleFileUpload(e, false);
+  };
+
+  const handleTextAreaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const textarea = e.target;
+    setNewMessage(textarea.value);
+    
+    // Reset height to auto to get the correct scrollHeight
+    textarea.style.height = 'auto';
+    
+    // Calculate new height based on content
+    const newHeight = Math.min(Math.max(64, textarea.scrollHeight), 250);
+    textarea.style.height = `${newHeight}px`;
+  };
+
   return (
     <div className="flex h-full min-w-0 max-w-full">
       {/* Main Chat Area */}
@@ -520,27 +700,91 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         {/* Message Input */}
         <div className="px-4 pb-4 pt-2 min-w-0">
           <form onSubmit={(e) => handleSubmit(e, false)} className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 border dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-600 transition-colors">
-              <label className={`cursor-pointer p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-l ${isUploading ? 'animate-pulse' : ''}`}>
+            {/* Formatting Toolbar */}
+            <div className="flex items-center space-x-2 px-4 py-2 border-t dark:border-gray-700">
+              <button
+                type="button"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                onClick={() => handleFormat('**', '**')}
+                title="Bold (Ctrl+B)"
+              >
+                <BoldIcon className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                onClick={() => handleFormat('*', '*')}
+                title="Italic (Ctrl+I)"
+              >
+                <ItalicIcon className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                onClick={() => handleFormat('~~', '~~')}
+                title="Strikethrough (Ctrl+E)"
+              >
+                <StrikethroughIcon className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                onClick={() => handleFormat('`', '`')}
+                title="Code (Ctrl+K)"
+              >
+                <CodeIcon className="w-5 h-5" />
+              </button>
+              <div className="h-6 w-px bg-gray-300 dark:bg-gray-700" />
+              <button
+                type="button"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                onClick={() => handleListFormat('bullet')}
+                title="Bullet List"
+              >
+                <ListIcon className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                onClick={() => handleListFormat('number')}
+                title="Numbered List"
+              >
+                <ListOrderedIcon className="w-5 h-5" />
+              </button>
+              <div className="h-6 w-px bg-gray-300 dark:bg-gray-700" />
+              <button
+                type="button"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg relative"
+                onClick={handleFileClick}
+                title="Attach File"
+              >
+                <PaperclipIcon className="w-5 h-5" />
                 <input
                   type="file"
-                  multiple
+                  ref={fileInputRef}
                   className="hidden"
-                  onChange={(e) => handleFileUpload(e, false)}
-                  disabled={isUploading}
+                  onChange={handleFileChange}
+                  multiple
                 />
-                <FileText 
-                  size={20} 
-                  className={`${fileAttachments.length > 0 ? 'text-blue-500' : isUploading ? 'text-yellow-500' : 'text-gray-400'}`} 
-                />
-              </label>
+              </button>
+              <button
+                type="button"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                onClick={handleSendMessage}
+                disabled={!newMessage.trim() && fileAttachments.length === 0}
+              >
+                <SendIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 border dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-600 transition-colors">
               <textarea
                 value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
+                onChange={handleTextAreaInput}
                 onKeyDown={(e) => handleKeyPress(e, false)}
                 placeholder={isUploading ? "Uploading files..." : "Message #general"}
-                className="flex-1 p-2 bg-transparent focus:outline-none min-h-[44px] max-h-[200px] resize-none"
-                rows={1}
+                className="flex-1 p-2 bg-transparent focus:outline-none min-h-[64px] max-h-[250px] resize-none rounded-l overflow-y-auto"
+                rows={2}
               />
               <button
                 type="submit"

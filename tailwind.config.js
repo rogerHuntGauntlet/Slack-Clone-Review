@@ -10,7 +10,9 @@ module.exports = {
       scrollbar: ['rounded'],
     },
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/typography'),
+  ],
   corePlugins: {
     scrollbar: false
   }

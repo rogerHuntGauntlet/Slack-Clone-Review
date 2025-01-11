@@ -1,8 +1,8 @@
 'use client'
 
 import { FC, useState, useEffect, useRef } from 'react'
-import { Send, Paperclip, Smile } from 'lucide-react'
-import { getDirectMessages, sendDirectMessage, getUserProfile } from '../lib/supabase'
+import { Send, Paperclip, Smile, Search } from 'lucide-react'
+import { getDirectMessages, sendDirectMessage, getUserProfile, supabase } from '../lib/supabase'
 import EmojiPicker from 'emoji-picker-react'
 import ChatHeader from './ChatHeader'
 import ProfileCard from './ProfileCard'
@@ -42,15 +42,18 @@ interface UserProfile {
 interface DirectMessageAreaProps {
   currentUser: { id: string; email: string; username?: string };
   otherUserId: string;
+  isDMListCollapsed?: boolean;
+  onClose?: () => void;
 }
 
-const DirectMessageArea: FC<DirectMessageAreaProps> = ({ currentUser, otherUserId }) => {
+const DirectMessageArea: FC<DirectMessageAreaProps> = ({ currentUser, otherUserId, isDMListCollapsed = false, onClose }) => {
   const [messages, setMessages] = useState<DirectMessage[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [otherUser, setOtherUser] = useState<UserProfile | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isBroTyping, setIsBroTyping] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -206,14 +209,83 @@ const DirectMessageArea: FC<DirectMessageAreaProps> = ({ currentUser, otherUserI
     }
   }, [newMessage, otherUserId])
 
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          id,
+          content,
+          created_at,
+          user_id,
+          receiver_id
+        `)
+        .or(`and(user_id.eq.${currentUser.id},receiver_id.eq.${otherUserId}),and(user_id.eq.${otherUserId},receiver_id.eq.${currentUser.id})`)
+        .ilike('content', `%${searchQuery}%`)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        // Highlight the first matching message
+        const messageElement = document.getElementById(`message-${data[0].id}`);
+        if (messageElement) {
+          messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          messageElement.classList.add('bg-yellow-100', 'dark:bg-yellow-900');
+          setTimeout(() => {
+            messageElement.classList.remove('bg-yellow-100', 'dark:bg-yellow-900');
+          }, 3000);
+        }
+      }
+    } catch (error) {
+      console.error('Error searching messages:', error);
+      setError('Failed to search messages');
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
-      <ChatHeader
-        channelName={otherUser?.username || 'Direct Message'}
-        isDM={true}
-        onSearchResult={handleSearchResult}
-        userWorkspaces={[]}
-      />
+    <div className="flex flex-col h-full bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center space-x-2">
+          {otherUser && (
+            <>
+              <img
+                src={otherUser.avatar_url || 'https://via.placeholder.com/40'}
+                alt={otherUser.username}
+                className="w-8 h-8 rounded-full"
+              />
+              <span className="font-medium dark:text-white">{otherUser.username}</span>
+            </>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+          aria-label="Close direct message"
+        >
+          <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Search Bar */}
+      <form onSubmit={handleSearch} className="bg-white dark:bg-gray-800 p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Search messages..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+        </div>
+      </form>
+
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
           <strong className="font-bold">Error:</strong>

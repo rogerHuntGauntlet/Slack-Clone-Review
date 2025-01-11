@@ -91,13 +91,12 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   const [userCount, setUserCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
-  const MAX_USERS = 40
-  const router = useRouter()
-  const [isChatExpanded, setIsChatExpanded] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showSearchResults, setShowSearchResults] = useState(false)
-  const [isThreadOpen, setIsThreadOpen] = useState(false)
+  const MAX_USERS = 40
+  const router = useRouter()
+  const [isDMListCollapsed, setIsDMListCollapsed] = useState(false)
 
   const supabase = createClientComponentClient()
 
@@ -387,7 +386,6 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
 
   const handleSelectDM = (userId: string) => {
     setActiveDM(userId)
-    setActiveChannel('')
   }
 
   const handleSwitchChannel = (channelId: string) => {
@@ -470,19 +468,6 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     }
   };
 
-  const handleThreadStateChange = (isOpen: boolean) => {
-    setIsThreadOpen(isOpen);
-    setIsChatExpanded(isOpen);
-    // When thread is closed, open the AI feed
-    if (!isOpen) {
-      setIsChatExpanded(false);
-    }
-  };
-
-  const handleActivityFeedCollapse = (isCollapsed: boolean) => {
-    setIsChatExpanded(isCollapsed);
-  };
-
   if (loading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>
   }
@@ -554,6 +539,62 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   return (
     <div className="min-h-screen bg-gray-900 p-4">
       <div className="flex h-[calc(100vh-2rem)] flex-col overflow-hidden bg-gray-50 dark:bg-gray-800/95 rounded-2xl shadow-2xl">
+        <style jsx global>{`
+          /* Modern scrollbar styling */
+          * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(156, 163, 175, 0.15) transparent;
+          }
+
+          *::-webkit-scrollbar {
+            width: 4px;
+          }
+
+          *::-webkit-scrollbar-track {
+            background: transparent;
+          }
+
+          *::-webkit-scrollbar-thumb {
+            background-color: rgba(156, 163, 175, 0.15);
+            border-radius: 100vh;
+          }
+
+          *::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(156, 163, 175, 0.25);
+          }
+
+          /* Hide scrollbar buttons */
+          *::-webkit-scrollbar-button {
+            display: none;
+          }
+
+          /* Dark mode adjustments */
+          .dark *::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.08);
+          }
+
+          .dark *::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(255, 255, 255, 0.15);
+          }
+
+          /* Hide scrollbar when not hovering */
+          .hover-scroll {
+            scrollbar-width: none;
+          }
+
+          .hover-scroll::-webkit-scrollbar {
+            display: none;
+          }
+
+          .hover-scroll:hover {
+            scrollbar-width: thin;
+          }
+
+          .hover-scroll:hover::-webkit-scrollbar {
+            display: block;
+          }
+        `}</style>
+
         <Header
           currentUser={user}
           isDarkMode={isDarkMode}
@@ -567,146 +608,52 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
         />
-        {showSearchResults && searchResults.length > 0 && (
-          <div className="absolute top-16 right-4 w-96 max-h-[70vh] overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-xl z-50">
-            <div className="p-4">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Search Results ({searchResults.length})
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowSearchResults(false)
-                    setSearchQuery('')
-                    setSearchResults([])
-                  }}
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                >
-                  ✕
-                </button>
-              </div>
-              {searchResults.map((result) => (
-                <div
-                  key={result.id}
-                  onClick={() => {
-                    setActiveChannel(result.channel_id);
-                    setShowSearchResults(false);
-                    setSearchQuery('');
-                  }}
-                  className="p-4 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer rounded-lg mb-2 border border-gray-200 dark:border-gray-700"
-                >
-                  <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 mb-1">
-                    <span className="flex items-center gap-2">
-                      <span className="font-medium">
-                        {result.user_profiles?.username || result.user_profiles?.email}
-                      </span>
-                      <span className="text-gray-400">in</span>
-                      <span className="font-medium text-indigo-500">
-                        #{result.channels?.name}
-                      </span>
-                    </span>
-                    <span>{new Date(result.created_at).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-gray-800 dark:text-gray-200 line-clamp-2">{result.content}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        
         <div className="flex flex-1 overflow-hidden">
-          <CollapsibleDMList
-            workspaceId={activeWorkspace}
-            onSelectDMAction={handleSelectDM}
-            activeUserId={activeDM}
-            currentUserId={user.id}
-          />
+          <div className="flex shrink-0">
+            <CollapsibleDMList
+              workspaceId={activeWorkspace}
+              onSelectDMAction={handleSelectDM}
+              activeUserId={activeDM}
+              currentUserId={user.id}
+              isCollapsed={isDMListCollapsed}
+              onCollapsedChange={setIsDMListCollapsed}
+            />
+            {activeDM && (
+              <div className="w-[25vw] shrink-0">
+                <DirectMessageArea
+                  currentUser={user}
+                  otherUserId={activeDM}
+                  isDMListCollapsed={isDMListCollapsed}
+                  onClose={() => setActiveDM(null)}
+                />
+              </div>
+            )}
+          </div>
           <Sidebar
             activeWorkspace={activeWorkspace}
             setActiveWorkspace={setActiveWorkspace}
             activeChannel={activeChannel}
             setActiveChannel={(channel) => {
               setActiveChannel(channel)
-              setActiveDM(null)
             }}
             currentUser={user}
             workspaces={workspaces}
           />
-          <div className="flex-1 flex bg-white dark:bg-gray-800/80 rounded-tl-2xl shadow-xl overflow-hidden">
-            <div className={`flex-1 flex min-w-0 max-w-full transition-all duration-300`}>
-              <style jsx global>{`
-                * {
-                  scrollbar-width: thin;
-                  scrollbar-color: rgba(156, 163, 175, 0.2) transparent;
-                }
-                
-                *::-webkit-scrollbar {
-                  width: 8px;
-                  height: 8px;
-                }
-                
-                *::-webkit-scrollbar-track {
-                  background: transparent;
-                  border-radius: 10px;
-                }
-                
-                *::-webkit-scrollbar-thumb {
-                  background-color: rgba(156, 163, 175, 0.2);
-                  border-radius: 10px;
-                  border: 2px solid transparent;
-                  background-clip: padding-box;
-                }
-                
-                *::-webkit-scrollbar-thumb:hover {
-                  background-color: rgba(156, 163, 175, 0.4);
-                }
-
-                *::-webkit-scrollbar-corner {
-                  background: transparent;
-                }
-                
-                .no-scrollbar::-webkit-scrollbar {
-                  display: none;
-                }
-                
-                .no-scrollbar {
-                  -ms-overflow-style: none;
-                  scrollbar-width: none;
-                }
-
-                /* Dark mode adjustments */
-                @media (prefers-color-scheme: dark) {
-                  *::-webkit-scrollbar-thumb {
-                    background-color: rgba(255, 255, 255, 0.1);
-                  }
-                  
-                  *::-webkit-scrollbar-thumb:hover {
-                    background-color: rgba(255, 255, 255, 0.2);
-                  }
-                }
-              `}</style>
-              {activeDM ? (
-                <DirectMessageArea
-                  currentUser={user}
-                  otherUserId={activeDM}
-                />
-              ) : (
-                <ChatArea
-                  activeWorkspace={activeWorkspace}
-                  activeChannel={activeChannel}
-                  currentUser={user}
-                  onSwitchChannel={handleSwitchChannel}
-                  userWorkspaces={userWorkspaceIds}
-                  onThreadStateChange={handleThreadStateChange}
-                />
-              )}
-            </div>
-
-            {/* Activity Feed */}
-            {activeWorkspace && !activeDM && (
-              <ActivityFeed
-                isCollapsed={isChatExpanded}
-                onCollapse={handleActivityFeedCollapse}
-              />
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {activeWorkspace && activeChannel && user && (
+              <div className="flex flex-1 h-full">
+                <div className="flex-1 min-w-0 h-full">
+                  <ChatArea
+                    activeWorkspace={activeWorkspace}
+                    activeChannel={activeChannel}
+                    currentUser={user}
+                    onSwitchChannel={handleSwitchChannel}
+                    userWorkspaces={userWorkspaceIds}
+                  />
+                </div>
+                <ActivityFeed className="transition-[width] duration-200" />
+              </div>
             )}
           </div>
         </div>

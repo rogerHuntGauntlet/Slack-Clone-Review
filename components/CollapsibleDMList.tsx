@@ -9,6 +9,8 @@ type DMListProps = {
   onSelectDMAction: (userId: string) => void
   activeUserId: string | null
   currentUserId: string
+  isCollapsed?: boolean
+  onCollapsedChange?: (isCollapsed: boolean) => void
 }
 
 interface DMUser {
@@ -19,9 +21,22 @@ interface DMUser {
   status: 'online' | 'offline' | 'away';
 }
 
-export default function CollapsibleDMList({ workspaceId, onSelectDMAction, activeUserId, currentUserId }: DMListProps) {
+export default function CollapsibleDMList({ 
+  workspaceId, 
+  onSelectDMAction, 
+  activeUserId, 
+  currentUserId,
+  isCollapsed: controlledIsCollapsed,
+  onCollapsedChange 
+}: DMListProps) {
   const [users, setUsers] = useState<DMUser[]>([])
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [internalIsCollapsed, setInternalIsCollapsed] = useState(false)
+  const isCollapsed = controlledIsCollapsed ?? internalIsCollapsed
+  
+  const handleCollapse = () => {
+    setInternalIsCollapsed(!isCollapsed)
+    onCollapsedChange?.(!isCollapsed)
+  }
 
   useEffect(() => {
     if (workspaceId) {
@@ -73,52 +88,75 @@ export default function CollapsibleDMList({ workspaceId, onSelectDMAction, activ
   });
 
   return (
-    <div className={`bg-gray-800 text-white h-full flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-64'}`}>
-      <button
-        onClick={() => setIsCollapsed(!isCollapsed)}
-        className={`flex items-center p-4 hover:bg-gray-700 transition-colors ${isCollapsed ? 'justify-center' : 'justify-between'}`}
-      >
-        {!isCollapsed && <span className="text-xl font-bold">Direct Messages</span>}
-        {isCollapsed ? <ChevronRight size={30} /> : <ChevronDown size={24} />}
-      </button>
-      <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full">
-        <ul className="space-y-1 p-2">
-          {sortedUsers.map((user) => (
-            <li key={user.id}>
-              <button
-                onClick={() => onSelectDMAction(user.id)}
-                className={`flex items-center w-full p-2 rounded-lg transition-all duration-200 ${
-                  activeUserId === user.id ? 'bg-gray-700' : 'hover:bg-gray-700'
-                }`}
-              >
-                <div className="relative">
-                  {user.avatar_url ? (
-                    <img
-                      src={user.avatar_url}
-                      alt={user.username}
-                      className="w-8 h-8 rounded-full"
-                    />
-                  ) : (
-                    <User size={32} className="text-gray-400" />
+    <>
+      <style jsx>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 200ms ease-in-out forwards;
+        }
+      `}</style>
+      <div className={`bg-gray-800 text-white h-full flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-64'}`}>
+        <button
+          onClick={handleCollapse}
+          className={`flex items-center p-4 hover:bg-gray-700 transition-colors ${isCollapsed ? 'justify-center' : 'justify-between'}`}
+        >
+          <span 
+            className={`text-xl font-bold transition-all duration-300 ease-in-out ${
+              isCollapsed 
+                ? 'opacity-0 w-0 hidden' 
+                : 'opacity-0 delay-200 animate-fadeIn'
+            }`}
+          >
+            Direct Messages
+          </span>
+          {isCollapsed ? <ChevronRight size={24} /> : <ChevronDown size={24} />}
+        </button>
+        <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full">
+          <ul className={`space-y-1 ${isCollapsed ? 'px-4' : 'p-2'}`}>
+            {sortedUsers.map((user) => (
+              <li key={user.id}>
+                <button
+                  onClick={() => onSelectDMAction(user.id)}
+                  className={`flex items-center w-full p-2 rounded-lg transition-all duration-200 ${
+                    activeUserId === user.id ? 'bg-gray-700' : 'hover:bg-gray-700'
+                  } ${isCollapsed ? 'justify-center' : 'justify-start'}`}
+                >
+                  <div className="relative flex-shrink-0">
+                    {user.avatar_url ? (
+                      <img
+                        src={user.avatar_url}
+                        alt={user.username}
+                        className="w-8 h-8 rounded-full"
+                      />
+                    ) : (
+                      <User size={32} className="text-gray-400" />
+                    )}
+                    <span
+                      className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-gray-800 ${
+                        user.status === 'online'
+                          ? 'bg-green-500'
+                          : user.status === 'away'
+                          ? 'bg-yellow-500'
+                          : 'bg-gray-500'
+                      }`}
+                    ></span>
+                  </div>
+                  {!isCollapsed && (
+                    <span className="ml-3 truncate">{user.username}</span>
                   )}
-                  <span
-                    className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-gray-800 ${
-                      user.status === 'online'
-                        ? 'bg-green-500'
-                        : user.status === 'away'
-                        ? 'bg-yellow-500'
-                        : 'bg-gray-500'
-                    }`}
-                  ></span>
-                </div>
-                {!isCollapsed && (
-                  <span className="ml-3 truncate">{user.username}</span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
-    </div>
+    </>
   )
 }

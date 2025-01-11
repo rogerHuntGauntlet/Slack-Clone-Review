@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Message from './Message';
 import { Send, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import type { MessageType } from '@/types/database'
 
 interface ThreadViewProps {
   parentMessage: MessageType;
@@ -13,28 +14,6 @@ interface ThreadViewProps {
   onReply: (messageId: string, replyText: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
   onClose: () => void;
-}
-
-interface MessageType {
-  id: string;
-  content: string;
-  created_at: string;
-  user_id: string;
-  channel: string;
-  parent_id?: string;
-  reactions?: { [key: string]: string[] };
-  user?: {
-    id: string;
-    username: string;
-    avatar_url: string | null;
-  };
-  replies?: MessageType[];
-  file_attachments?: {
-    id: string;
-    file_name: string;
-    file_type: string;
-    file_url: string;
-  }[];
 }
 
 const ThreadView: React.FC<ThreadViewProps> = ({
@@ -50,27 +29,25 @@ const ThreadView: React.FC<ThreadViewProps> = ({
   const handleSubmitReply = (e: React.FormEvent) => {
     e.preventDefault();
     if (replyText.trim()) {
-      onReply(parentMessage.id, replyText);
+      onReply(parentMessage.id, replyText.trim());
       setReplyText('');
     }
   };
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.2 }}
-      className="flex flex-col h-full bg-gradient-to-b from-gray-800/95 to-gray-900/95 backdrop-blur-xl rounded-xl shadow-2xl border border-white/10"
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      className="flex flex-col h-full bg-gray-50 dark:bg-gray-800/50"
     >
-      {/* Header */}
-      <div className="p-4 border-b border-white/10 relative flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-white">Thread</h2>
+      <div className="flex items-center bg-white justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Thread</h2>
         <button
           onClick={onClose}
-          className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all duration-200"
+          className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
         >
-          <X size={20} />
+          <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
         </button>
       </div>
 
@@ -85,9 +62,8 @@ const ThreadView: React.FC<ThreadViewProps> = ({
             <Message
               message={parentMessage}
               currentUser={currentUser}
-              isThread={true}
+              isThreadView={true}
               onReplyClick={() => {}}
-              onReactionSelect={onReaction}
               className="bg-white/5 rounded-xl shadow-lg"
             />
           </motion.div>
@@ -102,9 +78,8 @@ const ThreadView: React.FC<ThreadViewProps> = ({
               <Message
                 message={reply}
                 currentUser={currentUser}
-                isThread={true}
+                isThreadView={true}
                 onReplyClick={() => {}}
-                onReactionSelect={onReaction}
                 className="bg-white/5 rounded-xl shadow-lg ml-8 relative before:absolute before:left-0 before:top-8 before:w-8 before:h-px before:bg-white/10"
               />
             </motion.div>
