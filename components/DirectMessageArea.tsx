@@ -49,10 +49,26 @@ const DirectMessageArea: FC<DirectMessageAreaProps> = ({ currentUser, otherUserI
   const [newMessage, setNewMessage] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [otherUser, setOtherUser] = useState<UserProfile | null>(null)
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null)
+  const [isBroTyping, setIsBroTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    if (otherUserId === 'bro-user') {
+      // Set a mock profile for Bro user
+      setOtherUser({
+        id: 'bro-user',
+        username: 'Bro',
+        avatar_url: 'https://www.feistees.com/images/uploads/2015/05/silicon-valley-bro2bro-app-t-shirt_2.jpg',
+        email: 'bro@example.com',
+        status: 'online'
+      })
+      // Set empty messages array for Bro user
+      setMessages([])
+      setError(null)
+      return
+    }
+
     fetchMessages()
     fetchOtherUserProfile()
   }, [currentUser.id, otherUserId])
@@ -91,6 +107,68 @@ const DirectMessageArea: FC<DirectMessageAreaProps> = ({ currentUser, otherUserI
     e.preventDefault()
     setError(null)
     if (newMessage.trim()) {
+      // Special handling for Bro user
+      if (otherUserId === 'bro-user') {
+        const actualMessage = newMessage // Store the original message
+        setNewMessage('') // Clear input immediately
+        
+        // Create a client-side message object for the user's "Yo"
+        const userMessage: DirectMessage = {
+          id: Date.now().toString(),
+          content: 'Yo', // Always send "Yo" regardless of what was typed
+          created_at: new Date().toISOString(),
+          user_id: currentUser.id,
+          receiver_id: 'bro-user',
+          is_direct_message: true,
+          channel: '',
+          sender: {
+            id: currentUser.id,
+            username: currentUser.username || 'You',
+            avatar_url: ''
+          },
+          receiver: {
+            id: 'bro-user',
+            username: 'Bro',
+            avatar_url: 'https://www.feistees.com/images/uploads/2015/05/silicon-valley-bro2bro-app-t-shirt_2.jpg'
+          }
+        }
+        
+        // Add user's message immediately
+        setMessages(messages => [...messages, userMessage])
+
+        // Wait 1 second before showing typing indicator
+        setTimeout(() => {
+          setIsBroTyping(true)
+          
+          // Wait 3 more seconds of typing before sending response
+          setTimeout(() => {
+            setIsBroTyping(false)
+            const broResponse: DirectMessage = {
+              id: Date.now().toString(),
+              content: 'Yo',
+              created_at: new Date().toISOString(),
+              user_id: 'bro-user',
+              receiver_id: currentUser.id,
+              is_direct_message: true,
+              channel: '',
+              sender: {
+                id: 'bro-user',
+                username: 'Bro',
+                avatar_url: 'https://www.feistees.com/images/uploads/2015/05/silicon-valley-bro2bro-app-t-shirt_2.jpg'
+              },
+              receiver: {
+                id: currentUser.id,
+                username: currentUser.username || 'You',
+                avatar_url: ''
+              }
+            }
+            setMessages(messages => [...messages, broResponse])
+          }, 3000)
+        }, 1000)
+        
+        return
+      }
+
       try {
         const sentMessage = await sendDirectMessage(currentUser.id, otherUserId, newMessage.trim())
         setMessages([...messages, sentMessage])
@@ -99,6 +177,14 @@ const DirectMessageArea: FC<DirectMessageAreaProps> = ({ currentUser, otherUserI
         console.error('Error sending message:', error)
         setError('Failed to send message. Please try again.')
       }
+    }
+  }
+
+  // Handle Enter key press
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSendMessage(e as unknown as React.FormEvent)
     }
   }
 
@@ -112,6 +198,13 @@ const DirectMessageArea: FC<DirectMessageAreaProps> = ({ currentUser, otherUserI
       }, 3000);
     }
   };
+
+  // Remove the message override effect
+  useEffect(() => {
+    if (otherUserId === 'bro-user' && newMessage.trim() !== '') {
+      // Removed the auto-conversion to "Yo"
+    }
+  }, [newMessage, otherUserId])
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
@@ -143,6 +236,23 @@ const DirectMessageArea: FC<DirectMessageAreaProps> = ({ currentUser, otherUserI
             </div>
           </div>
         ))}
+        {isBroTyping && (
+          <div className="flex justify-start">
+            <div className="flex items-center space-x-2 bg-gray-300 dark:bg-gray-700 rounded-lg p-3">
+              <img 
+                src="https://www.feistees.com/images/uploads/2015/05/silicon-valley-bro2bro-app-t-shirt_2.jpg" 
+                alt="Bro" 
+                className="w-6 h-6 rounded-full"
+              />
+              <div className="flex space-x-1">
+                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
+              <span className="text-sm text-white">Bro is typing...</span>
+            </div>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
       <form onSubmit={handleSendMessage} className="p-4 bg-gray-100 dark:bg-gray-800 flex items-end">
@@ -156,6 +266,7 @@ const DirectMessageArea: FC<DirectMessageAreaProps> = ({ currentUser, otherUserI
         <textarea
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
+          onKeyDown={handleKeyPress}
           placeholder="Type your message..."
           className="flex-1 p-2 mx-2 rounded-lg border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
           rows={3}

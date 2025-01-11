@@ -50,8 +50,27 @@ export default function CollapsibleDMList({ workspaceId, onSelectDMAction, activ
 
   const fetchUsers = async () => {
     const workspaceUsers = await getWorkspaceUsers(workspaceId)
-    setUsers(workspaceUsers)
+    const broUser: DMUser = {
+      id: 'bro-user',
+      username: 'Bro',
+      email: 'bro@example.com',
+      avatar_url: 'https://www.feistees.com/images/uploads/2015/05/silicon-valley-bro2bro-app-t-shirt_2.jpg',
+      status: 'online'
+    }
+    setUsers([broUser, ...workspaceUsers])
   }
+
+  // Sort users to put SYSTEM and current user at the top
+  const sortedUsers = [...users].sort((a, b) => {
+    // Bro user always first
+    if (a.id === 'bro-user') return -1;
+    if (b.id === 'bro-user') return 1;
+    // Current user second
+    if (a.id === currentUserId) return -1;
+    if (b.id === currentUserId) return 1;
+    // Rest of users sorted alphabetically by username
+    return a.username.localeCompare(b.username);
+  });
 
   return (
     <div className={`bg-gray-800 text-white h-full flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-64'}`}>
@@ -64,7 +83,7 @@ export default function CollapsibleDMList({ workspaceId, onSelectDMAction, activ
       </button>
       <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full">
         <ul className="space-y-1 p-2">
-          {users.map((user) => (
+          {sortedUsers.map((user) => (
             <li key={user.id}>
               <button
                 onClick={() => onSelectDMAction(user.id)}
