@@ -991,7 +991,7 @@ export const createChannel = async (name: string, workspaceId: string) => {
     const { data: welcomeMessage, error: welcomeError } = await supabase
       .from('messages')
       .insert({
-        content: `Welcome to #${name}! This channel has been created for your team to collaborate and communicate effectively.`,
+        content: `Welcome to #${name}! 🎉 This channel has been created as a dedicated space for your team to collaborate, share ideas, and communicate effectively. Here, you can discuss projects, share updates, ask questions, and keep everyone in the loop. Feel free to use threads for focused discussions, react with emojis to show engagement, and upload files when needed. Let's make this channel a vibrant hub of productivity and teamwork! Remember, clear communication is key to success. 🚀`,
         channel_id: channel.id,
         user_id: session.user.id,
         file_attachments: null,
@@ -1011,7 +1011,7 @@ export const createChannel = async (name: string, workspaceId: string) => {
     const { data: aiReply, error: aiReplyError } = await supabase
       .from('messages')
       .insert({
-        content: `I'll be here to help make this channel productive and engaging! Feel free to ask me any questions. 🚀`,
+        content: `Thanks for creating this channel! I'm the AI Assistant, and I'm here to help make this channel more productive and engaging! I can help with organizing discussions, providing insights, and making sure everyone stays connected. Don't hesitate to mention me if you need any assistance! 🤖✨`,
         channel_id: channel.id,
         user_id: aiUser.id,
         parent_id: welcomeMessage.id,
@@ -1025,6 +1025,27 @@ export const createChannel = async (name: string, workspaceId: string) => {
       throw aiReplyError;
     }
     console.log('AI reply created:', aiReply)
+
+    // Add reactions to both messages
+    const emojis = ['👋', '🎉', '🚀', '💡', '❤️'];
+    
+    // Add reactions to welcome message
+    for (const emoji of emojis) {
+      await supabase.rpc('handle_reaction', {
+        message_id: welcomeMessage.id,
+        user_id: aiUser.id,
+        emoji: emoji
+      });
+    }
+
+    // Add reactions to AI reply
+    for (const emoji of emojis) {
+      await supabase.rpc('handle_reaction', {
+        message_id: aiReply.id,
+        user_id: aiUser.id,
+        emoji: emoji
+      });
+    }
 
     return channel;
   } catch (error) {

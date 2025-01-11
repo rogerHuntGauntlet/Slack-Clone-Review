@@ -1,4 +1,5 @@
 import { supabase } from '../supabase';
+import { updateReaction } from '../supabase';
 
 export interface Channel {
   id: string;
@@ -113,7 +114,7 @@ export async function createChannel(name: string, workspaceId: string) {
     const { data: welcomeMessage, error: welcomeError } = await supabase
       .from('messages')
       .insert({
-        content: `Welcome to #${name}! This channel has been created for your team to collaborate and communicate effectively.`,
+        content: `Welcome to #${name}! 🎉 This channel has been created as a dedicated space for your team to collaborate, share ideas, and communicate effectively. Here, you can discuss projects, share updates, ask questions, and keep everyone in the loop. Feel free to use threads for focused discussions, react with emojis to show engagement, and upload files when needed. Let's make this channel a vibrant hub of productivity and teamwork! Remember, clear communication is key to success. 🚀`,
         channel_id: channel.id,
         user_id: SYSTEM_USER_ID,
         file_attachments: null,
@@ -125,6 +126,37 @@ export async function createChannel(name: string, workspaceId: string) {
     if (welcomeError || !welcomeMessage) {
       console.error('Error creating welcome message:', welcomeError);
       throw new Error(`Failed to create welcome message: ${welcomeError?.message}`);
+    }
+
+    // Create AI reply
+    const { data: aiReply, error: aiReplyError } = await supabase
+      .from('messages')
+      .insert({
+        content: `Thanks for creating this channel! I'm the AI Assistant, and I'm here to help make this channel more productive and engaging! I can help with organizing discussions, providing insights, and making sure everyone stays connected. Don't hesitate to mention me if you need any assistance! 🤖✨`,
+        channel_id: channel.id,
+        user_id: SYSTEM_USER_ID,
+        parent_id: welcomeMessage.id,
+        file_attachments: null
+      })
+      .select()
+      .single();
+
+    if (aiReplyError || !aiReply) {
+      console.error('Error creating AI reply:', aiReplyError);
+      throw new Error(`Failed to create AI reply: ${aiReplyError?.message}`);
+    }
+
+    // Add reactions to both messages
+    const emojis = ['👋', '🎉', '🚀', '💡', '❤️'];
+    
+    // Add reactions to welcome message
+    for (const emoji of emojis) {
+      await updateReaction(welcomeMessage.id, SYSTEM_USER_ID, emoji);
+    }
+
+    // Add reactions to AI reply
+    for (const emoji of emojis) {
+      await updateReaction(aiReply.id, SYSTEM_USER_ID, emoji);
     }
 
     return channel;

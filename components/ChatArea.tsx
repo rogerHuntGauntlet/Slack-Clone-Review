@@ -15,6 +15,7 @@ interface ChatAreaProps {
   currentUser: { id: string; email: string };
   onSwitchChannel: (channelId: string) => void;
   userWorkspaces: string[];
+  onThreadStateChange?: (isOpen: boolean) => void;
 }
 
 interface MessageWithUserProfile extends MessageType {
@@ -39,7 +40,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   activeChannel,
   currentUser,
   onSwitchChannel,
-  userWorkspaces 
+  userWorkspaces,
+  onThreadStateChange
 }) => {
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [loading, setLoading] = useState(false);
@@ -459,7 +461,32 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const handleThreadClick = async (message: MessageType) => {
     setThreadMessage(message);
     setShowThreadView(true);
+    onThreadStateChange?.(true);
     await fetchThreadMessages(message.id);
+  };
+
+  const handleOpenThread = async (message: MessageType) => {
+    setThreadMessage(message);
+    onThreadStateChange?.(true);
+    // Fetch thread messages
+    const { data: threadMessages, error } = await supabase
+      .from('messages')
+      .select('*, user:users(*)')
+      .eq('parent_id', message.id)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching thread messages:', error);
+      return;
+    }
+
+    setThreadMessages(threadMessages || []);
+  };
+
+  const handleCloseThread = () => {
+    setThreadMessage(null);
+    setThreadMessages([]);
+    onThreadStateChange?.(false);
   };
 
   return (
@@ -558,6 +585,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                 setThreadMessages([]);
                 setNewThreadMessage('');
                 setThreadFileAttachments([]);
+                onThreadStateChange?.(false);
               }}
               className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
             >

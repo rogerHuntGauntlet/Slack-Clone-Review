@@ -23,19 +23,12 @@ const SAMPLE_MESSAGES = [
 interface ActivityFeedProps {
   className?: string;
   onCollapse?: (isCollapsed: boolean) => void;
+  isCollapsed?: boolean;
 }
 
-const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse }) => {
+const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse, isCollapsed: isCollapsedProp = false }) => {
   const [messages, setMessages] = useState<ActivityMessage[]>([])
-  const [isCollapsed, setIsCollapsed] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
-
-  const handleCollapse = () => {
-    const newCollapsed = !isCollapsed;
-    setIsCollapsed(newCollapsed);
-    setIsPaused(newCollapsed); // Auto-pause when collapsed
-    onCollapse?.(newCollapsed);
-  };
 
   useEffect(() => {
     // Generate initial message
@@ -76,9 +69,9 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse }) => 
 
   return (
     <>
-      <div className={`relative flex-shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0' : 'w-80'}`}>
+      <div className={`relative flex-shrink-0 transition-all duration-500 ease-in-out ${isCollapsedProp ? 'w-0' : 'w-80'}`}>
         {/* Main Feed Content */}
-        <div className={`absolute right-0 top-0 h-full bg-gray-800 text-white flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0 overflow-hidden' : 'w-full'}`}>
+        <div className={`absolute right-0 top-0 h-full bg-gray-800 text-white flex flex-col transition-all duration-500 ease-in-out ${isCollapsedProp ? 'w-0 overflow-hidden' : 'w-full'}`}>
           <div className="flex items-center p-4 justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 p-0.5 flex-shrink-0">
@@ -94,7 +87,7 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse }) => 
             </div>
             <button 
               className="w-6 h-6 flex items-center justify-center bg-gray-700 rounded-full hover:bg-gray-600 transition-colors"
-              onClick={handleCollapse}
+              onClick={() => onCollapse?.(true)}
             >
               <ChevronRight size={16} />
             </button>
@@ -141,12 +134,12 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '', onCollapse }) => 
       </div>
 
       {/* Floating Tab - Now outside the collapsible area */}
-      {isCollapsed && (
+      {isCollapsedProp && (
         <div 
-          className="fixed right-0 top-[4.5rem] cursor-pointer transform transition-transform duration-300 hover:-translate-x-1 z-50"
-          onClick={handleCollapse}
+          className="fixed right-0 top-[4.5rem] cursor-pointer transform transition-all duration-500 ease-in-out hover:-translate-x-1 z-50"
+          onClick={() => onCollapse?.(false)}
         >
-          <div className="bg-gray-800 text-white p-2.5 rounded-l-xl shadow-lg flex items-center gap-2">
+          <div className="bg-gray-800 text-white p-2.5 rounded-l-xl shadow-lg flex items-center gap-2 transition-transform duration-500 ease-in-out">
             <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 p-0.5">
               <div className="w-full h-full rounded-full overflow-hidden bg-gray-800 flex items-center justify-center">
                 <img

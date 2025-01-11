@@ -97,6 +97,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showSearchResults, setShowSearchResults] = useState(false)
+  const [isThreadOpen, setIsThreadOpen] = useState(false)
 
   const supabase = createClientComponentClient()
 
@@ -469,6 +470,19 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     }
   };
 
+  const handleThreadStateChange = (isOpen: boolean) => {
+    setIsThreadOpen(isOpen);
+    setIsChatExpanded(isOpen);
+    // When thread is closed, open the AI feed
+    if (!isOpen) {
+      setIsChatExpanded(false);
+    }
+  };
+
+  const handleActivityFeedCollapse = (isCollapsed: boolean) => {
+    setIsChatExpanded(isCollapsed);
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>
   }
@@ -682,15 +696,17 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
                   currentUser={user}
                   onSwitchChannel={handleSwitchChannel}
                   userWorkspaces={userWorkspaceIds}
+                  onThreadStateChange={handleThreadStateChange}
                 />
               )}
             </div>
 
             {/* Activity Feed */}
             {activeWorkspace && !activeDM && (
-              <ActivityFeed onCollapse={(isCollapsed) => {
-                setIsChatExpanded(isCollapsed);
-              }} />
+              <ActivityFeed
+                isCollapsed={isChatExpanded}
+                onCollapse={handleActivityFeedCollapse}
+              />
             )}
           </div>
         </div>
