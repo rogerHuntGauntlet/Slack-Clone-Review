@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Loader2 } from 'lucide-react'
 import { addUserToUniversalWorkspace } from '@/lib/supabase'
 
-export default function JoinPage() {
+// Create a separate component that uses useSearchParams
+function JoinContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClientComponentClient()
@@ -115,21 +116,29 @@ export default function JoinPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+        <div className="text-center">
+          <div className="relative mb-8">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 animate-pulse" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-12 h-12 border-t-2 border-b-2 border-white rounded-full animate-spin" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-semibold text-white">Loading...</h2>
+        </div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-red-600 mb-4">Error</h2>
-          <p className="text-gray-600 dark:text-gray-300">{error}</p>
+          <h2 className="text-2xl font-bold text-red-400 mb-4">Error</h2>
+          <p className="text-gray-300 mb-6">{error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
           >
             Try Again
           </button>
@@ -139,17 +148,17 @@ export default function JoinPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       <div className="max-w-md w-full mx-4">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
-          <h2 className="text-2xl font-bold text-center mb-6">Join Workspace</h2>
-          <p className="text-center text-gray-600 dark:text-gray-300 mb-8">
-            You've been invited to join <strong>{workspaceName}</strong>
+        <div className="bg-black/40 backdrop-blur-xl rounded-2xl shadow-2xl p-8 border border-white/10">
+          <h2 className="text-2xl font-bold text-white text-center mb-6">Join Workspace</h2>
+          <p className="text-center text-gray-300 mb-8">
+            You've been invited to join <strong className="text-indigo-400">{workspaceName}</strong>
           </p>
           <button
             onClick={handleJoin}
             disabled={isLoading}
-            className="w-full flex items-center justify-center px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
           >
             {isLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -160,5 +169,26 @@ export default function JoinPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// Main page component
+export default function JoinPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+        <div className="text-center">
+          <div className="relative mb-8">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 animate-pulse" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-12 h-12 border-t-2 border-b-2 border-white rounded-full animate-spin" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-semibold text-white">Loading...</h2>
+        </div>
+      </div>
+    }>
+      <JoinContent />
+    </Suspense>
   )
 } 
