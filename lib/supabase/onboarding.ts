@@ -1,5 +1,6 @@
 import { supabase } from '../supabase'
 import logger from '../logger'
+import { updateReaction } from '../supabase'
 
 interface ProfileData {
   username: string
@@ -16,6 +17,8 @@ interface ChannelData {
   name: string
   description?: string
 }
+
+const UNIVERSAL_WORKSPACE_ID = '00000000-0000-0000-0000-000000000000'
 
 export async function updateUserProfile(userId: string, data: ProfileData) {
   try {
@@ -36,6 +39,20 @@ export async function updateUserProfile(userId: string, data: ProfileData) {
     if (error) {
       logger.error('❌ [updateUserProfile] Error:', error)
       throw error
+    }
+
+    // Add user to universal workspace
+    const { error: universalError } = await supabase
+      .from('workspace_members')
+      .insert({
+        workspace_id: UNIVERSAL_WORKSPACE_ID,
+        user_id: userId,
+        role: 'member'
+      })
+
+    if (universalError && universalError.code !== '23505') { // Ignore if already exists
+      logger.error('❌ [updateUserProfile] Error adding to universal workspace:', universalError)
+      throw universalError
     }
 
     logger.log('✅ [updateUserProfile] Profile updated successfully:', profile)
@@ -92,6 +109,18 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
   try {
     logger.log('📢 [createOnboardingChannel] Creating channel:', data.name)
 
+    // Get AI user
+    const { data: aiUser } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('email', 'ai.assistant@chatgenius.ai')
+      .single();
+
+    if (!aiUser) {
+      logger.error('AI user not found')
+      throw new Error('AI user not found');
+    }
+
     // Create the channel
     const { data: channel, error: channelError } = await supabase
       .from('channels')
@@ -123,18 +152,67 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       throw memberError
     }
 
-    // Create welcome message
-    const { error: messageError } = await supabase
-      .from('messages')
+    // Add AI user to channel members
+    const { error: aiMemberError } = await supabase
+      .from('channel_members')
       .insert({
         channel_id: channel.id,
-        user_id: userId,
-        content: `Welcome to #${data.name}! ${data.description || 'This is your first channel.'}`
-      })
+        user_id: aiUser.id,
+        role: 'member'
+      });
 
-    if (messageError) {
-      logger.error('❌ [createOnboardingChannel] Error creating welcome message:', messageError)
-      throw messageError
+    if (aiMemberError) {
+      logger.error('Error adding AI to channel:', aiMemberError)
+      throw aiMemberError;
+    }
+
+    // Create welcome message
+    const { data: welcomeMessage, error: welcomeError } = await supabase
+      .from('messages')
+      .insert({
+        content: `Welcome to #${data.name}! 🎉 This channel has been created as a dedicated space for your team to collaborate, share ideas, and communicate effectively. Here, you can discuss projects, share updates, ask questions, and keep everyone in the loop. Feel free to use threads for focused discussions, react with emojis to show engagement, and upload files when needed. Let's make this channel a vibrant hub of productivity and teamwork! Remember, clear communication is key to success. 🚀`,
+        channel_id: channel.id,
+        user_id: userId,
+        file_attachments: null,
+        parent_id: null
+      })
+      .select()
+      .single()
+
+    if (welcomeError) {
+      logger.error('❌ [createOnboardingChannel] Error creating welcome message:', welcomeError)
+      throw welcomeError
+    }
+
+    // Create AI welcome reply
+    const { data: aiReply, error: aiReplyError } = await supabase
+      .from('messages')
+      .insert({
+        content: `Thanks for creating this channel! I'm the AI Assistant, and I'm here to help make this channel more productive and engaging! I can help with organizing discussions, providing insights, and making sure everyone stays connected. Don't hesitate to mention me if you need any assistance! 🤖✨`,
+        channel_id: channel.id,
+        user_id: aiUser.id,
+        parent_id: welcomeMessage.id,
+        file_attachments: null
+      })
+      .select()
+      .single()
+
+    if (aiReplyError) {
+      logger.error('Error creating AI reply:', aiReplyError)
+      throw aiReplyError;
+    }
+
+    // Add reactions to both messages
+    const emojis = ['👋', '🎉', '🚀', '💡', '❤️'];
+    
+    // Add reactions to welcome message
+    for (const emoji of emojis) {
+      await updateReaction(welcomeMessage.id, aiUser.id, emoji);
+    }
+
+    // Add reactions to AI reply
+    for (const emoji of emojis) {
+      await updateReaction(aiReply.id, aiUser.id, emoji);
     }
 
     logger.log('✅ [createOnboardingChannel] Channel created successfully:', channel)

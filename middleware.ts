@@ -30,40 +30,61 @@ export async function middleware(req: NextRequest) {
     return res
   }
 
-  // For all other routes (except onboarding), check if user needs onboarding
-  if (!req.nextUrl.pathname.startsWith('/onboarding')) {
-    // Check if user has a profile
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .single()
+  // Get current user metadata
+  const { data: { user } } = await supabase.auth.getUser()
+  const isNewSignup = user?.user_metadata?.is_new_signup === true
+  
+  console.log('Middleware Debug:', {
+    path: req.nextUrl.pathname,
+    isNewSignup,
+    metadata: user?.user_metadata
+  })
 
-    // Check if user has any workspaces
-    const { data: workspaces, error: workspacesError } = await supabase
-      .from('workspace_members')
-      .select('workspace_id')
-      .eq('user_id', session.user.id)
+  // Check user's setup status
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('username')
+    .eq('id', session.user.id)
+    .single()
 
-    const hasProfile = profile && !profileError
-    const hasWorkspaces = workspaces && workspaces.length > 0
-    const isNewSignup = session.user.user_metadata?.is_new_signup === true
+  const { data: workspaces } = await supabase
+    .from('workspace_members')
+    .select('workspace_id')
+    .eq('user_id', session.user.id)
 
-    // Only redirect to onboarding if user needs it
+  const hasProfile = profile?.username
+  const hasWorkspaces = workspaces && workspaces.length > 0
+
+  console.log('Middleware Status:', {
+    hasProfile,
+    hasWorkspaces,
+    isNewSignup,
+    currentPath: req.nextUrl.pathname
+  })
+
+  // If on onboarding page
+  if (req.nextUrl.pathname.startsWith('/onboarding')) {
+    // If setup is complete, redirect to platform
+    if (hasProfile && hasWorkspaces && !isNewSignup) {
+      console.log('Middleware: Redirecting to platform - Setup complete')
+      return NextResponse.redirect(new URL('/platform', req.url))
+    }
+    console.log('Middleware: Allowing onboarding access - Setup incomplete')
+    return res
+  }
+
+  // If on platform or other protected pages
+  if (req.nextUrl.pathname.startsWith('/platform') || 
+      req.nextUrl.pathname.startsWith('/workspace') || 
+      req.nextUrl.pathname.startsWith('/chat')) {
+    // If setup is not complete, redirect to onboarding
     if (!hasProfile || !hasWorkspaces || isNewSignup) {
-      let status = 'returning'
-      if (isNewSignup) {
-        status = 'new'
-      } else if (!hasProfile) {
-        status = 'needs_profile'
-      } else if (!hasWorkspaces) {
-        status = 'needs_workspace'
-      }
-
+      console.log('Middleware: Redirecting to onboarding - Setup incomplete')
       const onboardingUrl = new URL('/onboarding', req.url)
-      onboardingUrl.searchParams.set('status', status)
+      onboardingUrl.searchParams.set('status', isNewSignup ? 'new' : (!hasProfile ? 'needs_profile' : 'needs_workspace'))
       return NextResponse.redirect(onboardingUrl)
     }
+    console.log('Middleware: Allowing platform access - Setup complete')
   }
 
   return res

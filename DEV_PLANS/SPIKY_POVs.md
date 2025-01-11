@@ -5,6 +5,14 @@ This document tracks observations, questions, and points of confusion that don't
 
 ## Current Observations
 
+### Silent Onboarding Process
+- **Observation (Jan 11, 2024)**: The onboarding process lacks visibility into system actions. While the consensus view often assumes "no news is good news" in backend operations, chat applications actually benefit from explicit progress indication and status updates.
+- **Impact**: Users have no insight into account setup progress, leading to uncertainty about whether the system is working or stuck.
+- **Questions**:
+  - Should we treat system setup actions as "messages" in their own right?
+  - Could we use the AI Feed pattern to narrate system actions during onboarding?
+  - What are the key progress points users need to see during onboarding?
+
 ### Message Threading Behavior
 - **Observation (Jan 11, 2024)**: The interaction between thread state and AI feed state revealed an interesting edge case. While the consensus view suggests these should be independent components, their states are actually deeply intertwined. This raises questions about whether we should treat them as truly separate components or acknowledge their coupling explicitly.
 - **Impact**: This affected how we implemented the collapse/expand behavior and suggests we might need to rethink other component interactions similarly.
