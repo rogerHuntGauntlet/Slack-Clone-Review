@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const path = require('path')
+
 const nextConfig = {
   images: {
     domains: [
@@ -19,14 +21,9 @@ const nextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
-  webpack: (config, { isServer }) => {
-    // Add module resolution aliases
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      '@': '.',
-    }
-    return config
-  },
+  experimental: {
+    esmExternals: 'loose'
+  }
 }
 
 module.exports = nextConfig 
