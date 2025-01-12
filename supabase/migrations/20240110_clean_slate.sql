@@ -6,7 +6,7 @@ TRUNCATE TABLE workspace_members CASCADE;
 TRUNCATE TABLE workspaces CASCADE;
 
 -- Reset the AI user
-DELETE FROM user_profiles WHERE email = 'ai.assistant@chatgenius.ai';
+DELETE FROM user_profiles WHERE email = 'ai.assistant@ohfpartners.com';
 
 -- Create AI user with a proper UUID
 DO $$
@@ -18,7 +18,7 @@ BEGIN
     INSERT INTO user_profiles (id, email, username, avatar_url)
     VALUES (
         ai_user_id,
-        'ai.assistant@chatgenius.ai',
+        'ai.assistant@ohfpartners.com',
         'AI Assistant',
         'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'
     )

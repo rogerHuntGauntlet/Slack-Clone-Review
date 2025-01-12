@@ -77,7 +77,7 @@ export default function LogoutPage() {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
         >
-          <p className="text-gray-400">Thanks for using ChatGenius</p>
+          <p className="text-gray-400">Thanks for using OHF</p>
           <p className="text-gray-500 text-sm">Clearing your session data</p>
         </motion.div>
       </motion.div>

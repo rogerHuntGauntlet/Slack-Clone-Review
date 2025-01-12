@@ -1,0 +1,1 @@
+export { default as RiddleChallenge } from './RiddleChallenge'; 

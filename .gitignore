@@ -39,4 +39,10 @@ next-env.d.ts
 
 # Supabase
 /supabase/.branches
-/supabase/.temp 
+/supabase/.temp
+
+# Reference and backup directories
+legal_backup/
+reference-repo/
+reference_code/
+C:/Users/roger/Gauntlet_Projects/Slack_Clone_Week_1/reference-repo/ 
