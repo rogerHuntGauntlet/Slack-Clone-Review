@@ -39,31 +39,20 @@ export default function LogoutPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       <motion.div 
-        className="text-center"
+        className="text-center max-w-md px-6"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <motion.a
-          href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-          target="_blank"
-          className="block mb-6 text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer font-medium"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-        >
-          🎨 Help us pick our logo and win cash prizes! 🏆
-        </motion.a>
-        
-        <div className="relative mb-8">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 animate-pulse" />
+        <div className="relative mb-10">
+          <div className="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 animate-pulse" />
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-12 h-12 border-t-2 border-b-2 border-white rounded-full animate-spin" />
+            <div className="w-16 h-16 border-t-2 border-b-2 border-white rounded-full animate-spin" />
           </div>
         </div>
         
         <motion.h1 
-          className="text-3xl font-bold text-white mb-3"
+          className="text-4xl font-bold text-white mb-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
@@ -72,13 +61,13 @@ export default function LogoutPage() {
         </motion.h1>
         
         <motion.div
-          className="flex flex-col gap-2"
+          className="flex flex-col gap-3"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
         >
-          <p className="text-gray-400">Thanks for using OHF</p>
-          <p className="text-gray-500 text-sm">Clearing your session data</p>
+          <p className="text-gray-300 text-lg">Thanks for using OHF</p>
+          <p className="text-gray-400">Clearing your session data</p>
         </motion.div>
       </motion.div>
     </div>
