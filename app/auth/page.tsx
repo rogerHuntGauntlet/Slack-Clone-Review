@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 import { createUserProfile } from '@/lib/supabase'
 import { FaGithub, FaGoogle } from 'react-icons/fa'
 import { Eye, EyeOff } from 'lucide-react'
@@ -56,7 +56,6 @@ function AuthContent({ workspaceId }: AuthContentProps) {
     email?: string;
     password?: string;
   }>({})
-  const supabase = createClientComponentClient()
 
   useEffect(() => {
     debugLog('🔐 [Auth] AuthContent rendered with workspaceId:', workspaceId);
@@ -133,6 +132,26 @@ function AuthContent({ workspaceId }: AuthContentProps) {
     if (!workspaceId) return
 
     try {
+      // First check if user is already a member
+      const { data: existingMember, error: checkError } = await supabase
+        .from('workspace_members')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', userId)
+        .single()
+
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 means no rows returned
+        debugLog('Error checking workspace membership:', checkError)
+        throw checkError
+      }
+
+      // If user is already a member, just return
+      if (existingMember) {
+        debugLog('User is already a member of this workspace')
+        return
+      }
+
+      // If not a member, add them
       const { error } = await supabase
         .from('workspace_members')
         .insert([
