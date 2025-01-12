@@ -513,7 +513,7 @@ const getAiUser = async () => {
   const { data: aiUser } = await supabase
     .from('user_profiles')
     .select('*')
-    .eq('email', 'ai.assistant@chatgenius.ai')
+    .eq('email', 'ai.assistant@ohfpartners.com')
     .single();
 
   if (!aiUser) {
@@ -620,6 +620,20 @@ export const createWorkspace = async (name: string, userId?: string) => {
       throw new Error('User ID is required to create a workspace')
     }
 
+    // Get system users
+    const { data: systemUsers, error: systemError } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .in('id', ['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002']);
+
+    if (systemError || !systemUsers || systemUsers.length !== 2) {
+      logger.error('❌ [createWorkspace] Error getting system users:', systemError)
+      throw new Error('System users not found')
+    }
+
+    const aiUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000001')
+    const broUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000002')
+
     // Create the workspace
     const { data: workspace, error: workspaceError } = await supabase
       .from('workspaces')
@@ -635,17 +649,29 @@ export const createWorkspace = async (name: string, userId?: string) => {
     }
     logger.log('✅ [createWorkspace] Workspace created:', workspace)
 
-    // Add user as admin
+    // Add members
     const { error: memberError } = await supabase
       .from('workspace_members')
-      .insert({
-        workspace_id: workspace.id,
-        user_id: userId,
-        role: 'admin'
-      })
+      .insert([
+        {
+          workspace_id: workspace.id,
+          user_id: userId,
+          role: 'admin'
+        },
+        {
+          workspace_id: workspace.id,
+          user_id: aiUser.id,
+          role: 'member'
+        },
+        {
+          workspace_id: workspace.id,
+          user_id: broUser.id,
+          role: 'member'
+        }
+      ])
 
     if (memberError) {
-      logger.error('Failed to add user as admin:', memberError)
+      logger.error('Failed to add members:', memberError)
       throw memberError
     }
 
@@ -669,6 +695,68 @@ export const createWorkspace = async (name: string, userId?: string) => {
     }
     channels.push(generalChannel)
 
+    // Add members to general channel
+    await supabase
+      .from('channel_members')
+      .insert([
+        {
+          channel_id: generalChannel.id,
+          user_id: userId,
+          role: 'admin'
+        },
+        {
+          channel_id: generalChannel.id,
+          user_id: aiUser.id,
+          role: 'member'
+        },
+        {
+          channel_id: generalChannel.id,
+          user_id: broUser.id,
+          role: 'member'
+        }
+      ])
+
+    // Create welcome message
+    const { data: welcomeMessage } = await supabase
+      .from('messages')
+      .insert({
+        content: 'Welcome to the general channel! This is our main space for team communication.',
+        channel_id: generalChannel.id,
+        user_id: userId,
+        file_attachments: null,
+        parent_id: null
+      })
+      .select()
+      .single()
+
+    // Create AI reply
+    const { data: aiReply } = await supabase
+      .from('messages')
+      .insert({
+        content: `Thanks for creating this channel! I'm the AI Assistant, and I'm here to help make this channel more productive and engaging! I can help with organizing discussions, providing insights, and making sure everyone stays connected. Don't hesitate to mention me if you need any assistance! 🤖✨`,
+        channel_id: generalChannel.id,
+        user_id: aiUser.id,
+        parent_id: welcomeMessage.id,
+        file_attachments: null
+      })
+      .select()
+      .single()
+
+    // Add reactions
+    const emojis = ['👋', '🎉', '🚀', '💡', '❤️'];
+    for (const emoji of emojis) {
+      await supabase.rpc('handle_reaction', {
+        message_id: welcomeMessage.id,
+        user_id: aiUser.id,
+        emoji: emoji
+      });
+      await supabase.rpc('handle_reaction', {
+        message_id: aiReply.id,
+        user_id: aiUser.id,
+        emoji: emoji
+      });
+    }
+
     // Create social channel
     const { data: socialChannel, error: socialError } = await supabase
       .from('channels')
@@ -686,6 +774,67 @@ export const createWorkspace = async (name: string, userId?: string) => {
     }
     channels.push(socialChannel)
 
+    // Add members to social channel
+    await supabase
+      .from('channel_members')
+      .insert([
+        {
+          channel_id: socialChannel.id,
+          user_id: userId,
+          role: 'admin'
+        },
+        {
+          channel_id: socialChannel.id,
+          user_id: aiUser.id,
+          role: 'member'
+        },
+        {
+          channel_id: socialChannel.id,
+          user_id: broUser.id,
+          role: 'member'
+        }
+      ])
+
+    // Create welcome message for social
+    const { data: socialWelcome } = await supabase
+      .from('messages')
+      .insert({
+        content: 'Welcome to the social channel! This is where we can chat about non-work topics and have fun discussions.',
+        channel_id: socialChannel.id,
+        user_id: userId,
+        file_attachments: null,
+        parent_id: null
+      })
+      .select()
+      .single()
+
+    // Create AI reply for social
+    const { data: socialAiReply } = await supabase
+      .from('messages')
+      .insert({
+        content: `Time to have some fun! 🎉 I'll be here to join in the conversations and maybe even share a joke or two! Feel free to start any casual discussions or share interesting things you've found. 🎮 🎵 🎨`,
+        channel_id: socialChannel.id,
+        user_id: aiUser.id,
+        parent_id: socialWelcome.id,
+        file_attachments: null
+      })
+      .select()
+      .single()
+
+    // Add reactions to social messages
+    for (const emoji of emojis) {
+      await supabase.rpc('handle_reaction', {
+        message_id: socialWelcome.id,
+        user_id: aiUser.id,
+        emoji: emoji
+      });
+      await supabase.rpc('handle_reaction', {
+        message_id: socialAiReply.id,
+        user_id: aiUser.id,
+        emoji: emoji
+      });
+    }
+
     // Create work channel
     const { data: workChannel, error: workError } = await supabase
       .from('channels')
@@ -702,6 +851,67 @@ export const createWorkspace = async (name: string, userId?: string) => {
       throw workError
     }
     channels.push(workChannel)
+
+    // Add members to work channel
+    await supabase
+      .from('channel_members')
+      .insert([
+        {
+          channel_id: workChannel.id,
+          user_id: userId,
+          role: 'admin'
+        },
+        {
+          channel_id: workChannel.id,
+          user_id: aiUser.id,
+          role: 'member'
+        },
+        {
+          channel_id: workChannel.id,
+          user_id: broUser.id,
+          role: 'member'
+        }
+      ])
+
+    // Create welcome message for work
+    const { data: workWelcome } = await supabase
+      .from('messages')
+      .insert({
+        content: 'Welcome to the work channel! This is where we focus on tasks, projects, and getting things done.',
+        channel_id: workChannel.id,
+        user_id: userId,
+        file_attachments: null,
+        parent_id: null
+      })
+      .select()
+      .single()
+
+    // Create AI reply for work
+    const { data: workAiReply } = await supabase
+      .from('messages')
+      .insert({
+        content: `Let's get to work! 💪 I'm here to help keep discussions focused and productive. I can help organize tasks, track progress, and provide insights when needed. Just tag me if you need any assistance! 📊 ✅`,
+        channel_id: workChannel.id,
+        user_id: aiUser.id,
+        parent_id: workWelcome.id,
+        file_attachments: null
+      })
+      .select()
+      .single()
+
+    // Add reactions to work messages
+    for (const emoji of emojis) {
+      await supabase.rpc('handle_reaction', {
+        message_id: workWelcome.id,
+        user_id: aiUser.id,
+        emoji: emoji
+      });
+      await supabase.rpc('handle_reaction', {
+        message_id: workAiReply.id,
+        user_id: aiUser.id,
+        emoji: emoji
+      });
+    }
 
     logger.log('✅ [createWorkspace] Workspace setup completed successfully')
     return {
@@ -734,6 +944,7 @@ export const joinWorkspace = async (workspaceId: string, userId: string) => {
 
 export const getUserByEmail = async (email: string) => {
   try {
+    // Get the profile using the email
     const { data, error } = await supabase
       .from('user_profiles')
       .select('*')
@@ -803,6 +1014,9 @@ export const createUserProfile = async (user: { id: string; email?: string }) =>
       .single();
 
     if (existingProfile) {
+      // Ensure user is in universal workspace even if profile exists
+      await ensureUniversalWorkspace();
+      await addUserToUniversalWorkspace(user.id);
       return existingProfile;
     }
 
@@ -842,6 +1056,10 @@ export const createUserProfile = async (user: { id: string; email?: string }) =>
     if (!newProfile) {
       throw new Error('Failed to create user profile');
     }
+
+    // Ensure universal workspace exists and add user to it
+    await ensureUniversalWorkspace();
+    await addUserToUniversalWorkspace(user.id);
 
     console.log('Created new user profile:', newProfile);
     return newProfile;
@@ -917,129 +1135,106 @@ export const getUserCount = async () => {
   }
 };
 
-export const createChannel = async (name: string, workspaceId: string) => {
+export const createChannel = async (
+  workspaceId: string,
+  name: string,
+  userId: string,
+  description?: string
+) => {
   try {
-    console.log('Starting channel creation:', { name, workspaceId })
-    
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not authenticated');
-    console.log('User authenticated:', session.user.id)
+    logger.log('🏗️ [createChannel] Starting channel creation:', { workspaceId, name })
 
-    // Get AI user
-    const { data: aiUser } = await supabase
+    // Get system users
+    const { data: systemUsers, error: systemError } = await supabase
       .from('user_profiles')
       .select('*')
-      .eq('email', 'ai.assistant@chatgenius.ai')
-      .single();
+      .in('id', ['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002']);
 
-    if (!aiUser) {
-      console.error('AI user not found')
-      throw new Error('AI user not found');
+    if (systemError || !systemUsers || systemUsers.length !== 2) {
+      logger.error('❌ [createChannel] Error getting system users:', systemError)
+      throw new Error('System users not found')
     }
-    console.log('Found AI user:', aiUser.id)
+
+    const aiUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000001')
+    const broUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000002')
 
     // Create the channel
-    console.log('Creating channel in database...')
-    const { data: channel, error } = await supabase
+    const { data: channel, error: channelError } = await supabase
       .from('channels')
       .insert({
-        name,
         workspace_id: workspaceId,
-        created_by: session.user.id
+        name,
+        description,
+        created_by: userId
       })
       .select()
-      .single();
+      .single()
 
-    if (error) {
-      console.error('Error creating channel in database:', error)
-      throw error;
+    if (channelError) {
+      logger.error('❌ [createChannel] Error creating channel:', channelError)
+      throw channelError
     }
-    console.log('Channel created:', channel)
 
-    // Add creator to channel members
-    console.log('Adding creator to channel members...')
+    // Add members
     const { error: memberError } = await supabase
       .from('channel_members')
-      .insert({
-        channel_id: channel.id,
-        user_id: session.user.id,
-        role: 'admin'
-      });
+      .insert([
+        {
+          channel_id: channel.id,
+          user_id: userId,
+          role: 'admin'
+        },
+        {
+          channel_id: channel.id,
+          user_id: aiUser.id,
+          role: 'member'
+        },
+        {
+          channel_id: channel.id,
+          user_id: broUser.id,
+          role: 'member'
+        }
+      ])
 
     if (memberError) {
-      console.error('Error adding creator to channel:', memberError)
-      throw memberError;
-    }
-
-    // Add AI user to channel members
-    console.log('Adding AI user to channel members...')
-    const { error: aiMemberError } = await supabase
-      .from('channel_members')
-      .insert({
-        channel_id: channel.id,
-        user_id: aiUser.id,
-        role: 'member'
-      });
-
-    if (aiMemberError) {
-      console.error('Error adding AI to channel:', aiMemberError)
-      throw aiMemberError;
+      logger.error('❌ [createChannel] Error adding members:', memberError)
+      throw memberError
     }
 
     // Create welcome message
-    console.log('Creating welcome message...')
-    const { data: welcomeMessage, error: welcomeError } = await supabase
+    const { data: welcomeMessage } = await supabase
       .from('messages')
       .insert({
-        content: `Welcome to #${name}! 🎉 This channel has been created as a dedicated space for your team to collaborate, share ideas, and communicate effectively. Here, you can discuss projects, share updates, ask questions, and keep everyone in the loop. Feel free to use threads for focused discussions, react with emojis to show engagement, and upload files when needed. Let's make this channel a vibrant hub of productivity and teamwork! Remember, clear communication is key to success. 🚀`,
+        content: `Welcome to #${name}! This channel was created by <@${userId}>.${description ? ` Channel description: ${description}` : ''}`,
         channel_id: channel.id,
-        user_id: session.user.id,
+        user_id: userId,
         file_attachments: null,
         parent_id: null
       })
       .select()
-      .single();
+      .single()
 
-    if (welcomeError) {
-      console.error('Error creating welcome message:', welcomeError)
-      throw welcomeError;
-    }
-    console.log('Welcome message created:', welcomeMessage)
-
-    // Create AI welcome reply
-    console.log('Creating AI welcome reply...')
-    const { data: aiReply, error: aiReplyError } = await supabase
+    // Create AI reply
+    const { data: aiReply } = await supabase
       .from('messages')
       .insert({
-        content: `Thanks for creating this channel! I'm the AI Assistant, and I'm here to help make this channel more productive and engaging! I can help with organizing discussions, providing insights, and making sure everyone stays connected. Don't hesitate to mention me if you need any assistance! 🤖✨`,
+        content: `Thanks for creating this channel! I'm here to help make discussions more productive and engaging. Feel free to mention me if you need any assistance! 🤖✨`,
         channel_id: channel.id,
         user_id: aiUser.id,
         parent_id: welcomeMessage.id,
         file_attachments: null
       })
       .select()
-      .single();
+      .single()
 
-    if (aiReplyError) {
-      console.error('Error creating AI reply:', aiReplyError)
-      throw aiReplyError;
-    }
-    console.log('AI reply created:', aiReply)
-
-    // Add reactions to both messages
+    // Add reactions
     const emojis = ['👋', '🎉', '🚀', '💡', '❤️'];
-    
-    // Add reactions to welcome message
     for (const emoji of emojis) {
       await supabase.rpc('handle_reaction', {
         message_id: welcomeMessage.id,
         user_id: aiUser.id,
         emoji: emoji
       });
-    }
-
-    // Add reactions to AI reply
-    for (const emoji of emojis) {
       await supabase.rpc('handle_reaction', {
         message_id: aiReply.id,
         user_id: aiUser.id,
@@ -1047,12 +1242,14 @@ export const createChannel = async (name: string, workspaceId: string) => {
       });
     }
 
-    return channel;
+    logger.log('✅ [createChannel] Channel created successfully:', channel)
+    return channel
+
   } catch (error) {
-    console.error('Error in createChannel:', error)
-    throw error;
+    logger.error('❌ [createChannel] Error:', error)
+    throw error
   }
-};
+}
 
 export const getWorkspaceUsers = async (workspaceId: string) => {
   try {
@@ -1181,15 +1378,12 @@ export const sendDirectMessage = async (
   }
 };
 
-export const updateUserStatus = async (status: 'online' | 'offline' | 'away') => {
+export const updateUserStatus = async (status: 'online' | 'offline' | 'away', userId: string) => {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not authenticated');
-
     const { data, error } = await supabase
       .from('user_profiles')
       .update({ status })
-      .eq('id', session.user.id)
+      .eq('id', userId)
       .select()
       .single();
 
@@ -1247,7 +1441,7 @@ export const updateDirectMessageReaction = async (messageId: string, userId: str
 }
 
 const UNIVERSAL_WORKSPACE_ID = '00000000-0000-0000-0000-000000000000'
-const UNIVERSAL_WORKSPACE_NAME = 'ChatGenius Community'
+const UNIVERSAL_WORKSPACE_NAME = 'OHF Community'
 
 const addAllUsersToUniversalWorkspace = async () => {
   try {

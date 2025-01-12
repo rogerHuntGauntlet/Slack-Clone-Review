@@ -27,7 +27,6 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Workspace } from '@/types/supabase'
 import ActivityFeed from '../../components/ActivityFeed'
 import logger from '@/lib/logger'
-import LogDisplay from '../../components/LogDisplay'
 
 interface WorkspaceListProps {
   workspaces: Workspace[];
@@ -47,17 +46,17 @@ export default function Platform() {
 
   useEffect(() => {
     // Set up logger only once when component mounts
-    logger.log = addLog
+    const originalLog = logger.log;
+    logger.log = addLog;
 
     // Initial logs
-    addLog('Platform mounting')
-    addLog(`Environment: ${process.env.NODE_ENV}`)
+    addLog('Platform mounting');
 
     // Cleanup
     return () => {
-      logger.log = console.log // Reset logger on unmount
+      logger.log = originalLog; // Reset logger on unmount
     }
-  }, []) // Empty dependency array means this only runs once on mount
+  }, []); // Empty dependency array means this only runs once on mount
 
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center">
@@ -101,57 +100,76 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   const supabase = createClientComponentClient()
 
   useEffect(() => {
-    const initializePlatform = async () => {
-      addLog('PlatformContent component initializing...')
-
+    const checkUser = async () => {
+      setLoading(true)
       try {
-        // Check user session
         const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
-          addLog('No session found')
-          router.push('/auth')
-          return
+        if (session && session.user) {
+          setUser({
+            id: session.user.id,
+            email: session.user.email || '',
+            username: session.user.user_metadata.username
+          })
+          logger.log("Session found:", session)
+          const userData = await getUserByEmail(session.user.email)
+          if (userData) {
+            setUser(userData)
+            await fetchUserData(userData.id, userData.email)
+          } else {
+            throw new Error('User data not found')
+          }
+        } else {
+          const storedEmail = sessionStorage.getItem('userEmail')
+          if (storedEmail) {
+            const userData = await getUserByEmail(storedEmail)
+            if (userData) {
+              setUser(userData)
+              await fetchUserData(userData.id, userData.email)
+            } else {
+              throw new Error('User data not found')
+            }
+          } else {
+            throw new Error('No user session or stored email')
+          }
         }
-        addLog('Session found')
-
-        // Get user data
-        const userData = await getUserByEmail(session.user.email!)
-        if (!userData) {
-          addLog('User profile not found, creating...')
-          await createUserProfile(session.user)
-        }
-
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          username: userData?.username
-        })
-
-        // Clear workspace state
-        setActiveWorkspace('')
-        setActiveChannel('')
-
-        // Fetch workspaces
-        const fetchedWorkspaces = await getWorkspaces(session.user.id)
-        setWorkspaces(fetchedWorkspaces)
-
-        // Always show workspace selection
-        setShowWorkspaceSelection(true)
-
-        // Get user count
-        const count = await getUserCount()
-        setUserCount(count)
-
-        setLoading(false)
       } catch (error) {
-        logger.error('Error initializing platform:', error)
-        setError('Failed to initialize platform')
+        logger.error('Error checking user:', error)
+        router.push('/auth')
+      } finally {
         setLoading(false)
       }
     }
-
-    initializePlatform()
+    checkUser()
   }, [router, supabase.auth])
+
+  const fetchUserData = async (userId: string, email: string) => {
+    try {
+      const [userWorkspaces, userProfile] = await Promise.all([
+        getWorkspaces(userId),
+        getUserByEmail(email)
+      ])
+      logger.log("User data fetched:", { userWorkspaces, userProfile, userId })
+
+      if (userProfile) {
+        setUser(prevUser => ({
+          ...prevUser,
+          ...userProfile,
+        }))
+      }
+
+      setWorkspaces(userWorkspaces)
+      setUserWorkspaceIds(userWorkspaces.map((workspace: { id: string }) => workspace.id))
+      
+      if (userWorkspaces.length > 0) {
+        setShowWorkspaceSelection(true)
+      } else {
+        setShowWorkspaceSelection(true)
+      }
+    } catch (error) {
+      logger.error('Error fetching user data:', error)
+      setError('Failed to fetch user data. Please try logging in again.')
+    }
+  }
 
   useEffect(() => {
     if (isDarkMode) {
@@ -411,8 +429,21 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
 
   const handleLogout = async () => {
     try {
-      // Only redirect to logout page, let the logout page handle the cleanup
-      router.push('/logout')
+      await supabase.auth.signOut()
+      sessionStorage.removeItem('userEmail')
+      setUser(null)
+      setActiveWorkspace('')
+      setActiveChannel('')
+      setActiveDM(null)
+      setWorkspaces([])
+      setNewWorkspaceName('')
+      setError(null)
+      setShowProfileModal(false)
+      setJoiningWorkspaceName(null)
+      setShowWorkspaceSelection(false)
+      setUserWorkspaceIds([])
+      logger.log('User logged out successfully')
+      router.push('/auth')
     } catch (error) {
       logger.error('Error signing out:', error)
       setError('Failed to sign out. Please try again.')
@@ -476,7 +507,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-pink-300 to-blue-300 dark:from-pink-900 dark:to-blue-900">
         <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md w-96">
-          <h1 className="text-2xl font-bold mb-6 text-center text-gray-900 dark:text-white">Welcome to ChatGenius</h1>
+          <h1 className="text-2xl font-bold mb-6 text-center text-gray-900 dark:text-white">Welcome to OHF</h1>
           <p className="text-center text-gray-600 dark:text-gray-400 mb-4">
             Current users: {userCount} / {MAX_USERS}
           </p>

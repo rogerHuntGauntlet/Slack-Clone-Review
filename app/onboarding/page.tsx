@@ -329,7 +329,7 @@ function OnboardingContent() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md mx-auto">
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-white">Welcome to ChatGenius</h2>
+          <h2 className="text-3xl font-bold text-white">Welcome to OHF</h2>
           <p className="mt-2 text-gray-400">Let's get you set up</p>
         </div>
 
@@ -379,7 +379,7 @@ function OnboardingContent() {
                 id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base py-3 px-4"
                 required
                 placeholder="Enter username"
               />
@@ -417,7 +417,7 @@ function OnboardingContent() {
                 id="workspace"
                 value={workspaceName}
                 onChange={(e) => setWorkspaceName(e.target.value)}
-                className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base py-3 px-4"
                 required
                 placeholder="Enter workspace name"
               />
@@ -455,7 +455,7 @@ function OnboardingContent() {
                 id="channel"
                 value={channelName}
                 onChange={(e) => setChannelName(e.target.value)}
-                className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base py-3 px-4"
                 required
                 placeholder="Enter channel name"
               />
