@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { PlusCircle } from 'lucide-react'
 import { getWorkspaces, createWorkspace, joinWorkspace } from '../lib/supabase'
+import { useUser } from '@supabase/auth-helpers-react'
 
 interface Workspace {
   id: string
@@ -17,6 +18,7 @@ export default function WorkspaceManager({
   activeWorkspace, 
   onWorkspaceSelect
 }: WorkspaceManagerProps) {
+  const user = useUser()
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [joinWorkspaceId, setJoinWorkspaceId] = useState('')
@@ -48,9 +50,9 @@ export default function WorkspaceManager({
 
   const handleJoinWorkspace = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (joinWorkspaceId) {
+    if (joinWorkspaceId && user?.id) {
       try {
-        await joinWorkspace(joinWorkspaceId)
+        await joinWorkspace(joinWorkspaceId, user.id)
         await fetchWorkspaces()
         setJoinWorkspaceId('')
         onWorkspaceSelect(joinWorkspaceId)

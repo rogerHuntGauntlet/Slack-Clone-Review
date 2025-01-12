@@ -72,13 +72,8 @@ const UserStatus: React.FC<UserStatusProps> = ({ currentUser }) => {
 
   const handleStatusChange = async (newStatus: Status) => {
     setStatus(newStatus)
-    const updatedUser = await updateUserStatus(currentUser.id, newStatus)
-    if (updatedUser) {
-      // You might want to update the global user state here if you're using one
-      console.log('Status updated successfully')
-    } else {
-      console.error('Failed to update status')
-    }
+    await updateStatus(newStatus)
+    console.log('Status updated successfully')
     setIsDropdownOpen(false)
   }
 
