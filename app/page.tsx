@@ -162,11 +162,18 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
-        <div className="max-w-4xl mx-auto pt-20 px-4">
-          <h1 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white flex items-center justify-center">
+        <div className="text-center space-y-6">
+          <div className="relative w-24 h-24 mx-auto">
+            <div className="absolute inset-0 rounded-full border-4 border-blue-500/30 animate-pulse"></div>
+            <div className="absolute inset-0 rounded-full border-t-4 border-purple-500 animate-spin"></div>
+          </div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
             Loading...
           </h1>
+          <p className="text-gray-400 text-sm animate-pulse">
+            Preparing your experience
+          </p>
         </div>
       </div>
     )

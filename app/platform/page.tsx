@@ -500,52 +500,31 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen">Loading...</div>
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-r from-pink-300 to-blue-300 dark:from-pink-900 dark:to-blue-900">
+        <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Loading your workspace...</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Please wait while we set things up</p>
+        </div>
+      </div>
+    )
   }
 
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-pink-300 to-blue-300 dark:from-pink-900 dark:to-blue-900">
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md w-96">
-          <h1 className="text-2xl font-bold mb-6 text-center text-gray-900 dark:text-white">Welcome to OHF</h1>
-          <p className="text-center text-gray-600 dark:text-gray-400 mb-4">
-            Current users: {userCount} / {MAX_USERS}
+        <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md w-96 text-center">
+          <h1 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Welcome to OHF</h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            Please visit our homepage to learn more about our platform and get started.
           </p>
-          {joiningWorkspaceName && (
-            <div className="mb-4 p-4 bg-blue-100 dark:bg-blue-900 rounded-lg">
-              <p className="text-blue-800 dark:text-blue-200">
-                You're joining the workspace: <strong>{joiningWorkspaceName}</strong>
-              </p>
-            </div>
-          )}
-          {error && <p className="text-red-500 mb-4">{error}</p>}
-          <form onSubmit={handleEmailSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Email
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-gray-900 dark:text-white dark:bg-gray-700 dark:border-gray-600"
-              />
-            </div>
-            <button
-              type="submit"
-              className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition-colors"
-              disabled={userCount >= MAX_USERS}
-            >
-              {joiningWorkspaceName ? 'Join Workspace' : 'Continue'}
-            </button>
-          </form>
-          {userCount >= MAX_USERS && (
-            <p className="mt-4 text-center text-red-500">
-              We've reached our user limit. Please check back later.
-            </p>
-          )}
+          <a 
+            href="/"
+            className="inline-block bg-blue-500 text-white px-6 py-3 rounded-md hover:bg-blue-600 transition-colors"
+          >
+            Go to Homepage
+          </a>
         </div>
       </div>
     )
