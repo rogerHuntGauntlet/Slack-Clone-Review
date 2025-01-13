@@ -60,11 +60,51 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 
   useEffect(() => {
     debugLog('🔐 [Auth] AuthContent rendered with workspaceId:', workspaceId);
+    
+    const handleOAuthCallback = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession()
+      
+      if (session?.user) {
+        debugLog('OAuth callback detected with session:', session.user.id)
+        setMessage('Completing sign in...')
+        setLoading(true)
+        
+        try {
+          // Check for existing profile
+          const { data: profile, error: profileError } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+
+          debugLog('Profile check result:', { profile, profileError })
+
+          // If no profile exists or there's an error, this is a new user
+          if (!profile || profileError) {
+            debugLog('No profile found - redirecting to onboarding')
+            setMessage('Redirecting to onboarding...')
+            await router.push('/onboarding')
+            return
+          }
+
+          // If we get here, user has a profile, proceed to platform
+          debugLog('Existing profile found - redirecting to platform')
+          await router.push('/platform')
+        } catch (error: any) {
+          debugLog('Error in OAuth callback:', error)
+          setError(error.message)
+          setLoading(false)
+        }
+      }
+    }
+
     if (workspaceId) {
-      debugLog('🔐 [Auth] Checking for workspace details...');
       fetchWorkspaceDetails()
     }
-  }, [workspaceId])
+
+    // Check for OAuth callback
+    handleOAuthCallback()
+  }, [workspaceId, router]) // Add router to dependencies
 
   const validateForm = () => {
     const errors: { email?: string; password?: string } = {}
