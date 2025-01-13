@@ -48,11 +48,11 @@ interface MessageReactionPayload {
 console.log('🔧 [Supabase] Starting Supabase initialization...');
 
 // Create a singleton instance
-let supabaseInstance: ReturnType<typeof createClientComponentClient<Database>> | null = null
+let supabaseInstance: ReturnType<typeof createClientComponentClient> | null = null
 
 export const getSupabaseClient = () => {
   if (!supabaseInstance) {
-    supabaseInstance = createClientComponentClient<Database>()
+    supabaseInstance = createClientComponentClient()
   }
   return supabaseInstance
 }

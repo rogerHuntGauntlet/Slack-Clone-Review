@@ -17,17 +17,9 @@ import {
   SendIcon 
 } from 'lucide-react';
 import type { MessageType, FileAttachment } from '../types/database';
+import type { ChatAreaProps } from '@/types/components';
 import Message from './Message';
 import ReplyModal from './ReplyModal';
-
-interface ChatAreaProps {
-  activeWorkspace: string;
-  activeChannel: string;
-  currentUser: { id: string; email: string };
-  onSwitchChannel: (channelId: string) => void;
-  userWorkspaces: string[];
-  onThreadStateChange?: (isOpen: boolean) => void;
-}
 
 interface MessageWithUserProfile extends MessageType {
   user_profiles: {

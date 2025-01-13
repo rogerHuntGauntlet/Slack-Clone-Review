@@ -1,11 +1,7 @@
 import { FC, useState, useEffect, useRef } from 'react'
 import { X, Upload, Camera, User } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-
-interface ProfileModalProps {
-  currentUser: { id: string; email: string };
-  onClose: () => void;
-}
+import { ProfileModalProps } from '@/types/components'
 
 interface Profile {
   username: string;
@@ -15,7 +11,11 @@ interface Profile {
   employer: string;
 }
 
-const ProfileModal: FC<ProfileModalProps> = ({ currentUser, onClose }) => {
+const ProfileModal: React.FC<ProfileModalProps> = ({
+  currentUser,
+  onClose,
+  isMobile
+}) => {
   const [profile, setProfile] = useState<Profile>({
     username: '',
     avatar_url: '',

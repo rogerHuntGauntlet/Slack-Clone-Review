@@ -3,28 +3,12 @@ import { User, Hash, Share2, ChevronDown, ChevronRight } from 'lucide-react'
 import ChannelList from './ChannelList'
 import UserStatus from './UserStatus'
 import { getChannels } from '../lib/supabase'
-import '../styles/sidebar.css';
+import '../styles/sidebar.css'
+import type { SidebarProps } from '@/types/components'
 
 interface Channel {
   id: string;
   name: string;
-}
-
-interface SidebarProps {
-  activeWorkspace: string
-  setActiveWorkspace: (workspaceId: string) => void
-  activeChannel: string
-  setActiveChannel: (channel: string) => void
-  currentUser: {
-    id: string
-    email: string
-    username?: string
-  }
-  workspaces: Array<{
-    id: string
-    name: string
-    role: string
-  }>
 }
 
 const Sidebar: FC<SidebarProps> = ({
@@ -33,7 +17,8 @@ const Sidebar: FC<SidebarProps> = ({
   activeChannel,
   setActiveChannel,
   currentUser,
-  workspaces
+  workspaces,
+  isMobile
 }) => {
   const [showShareLink, setShowShareLink] = useState(false)
   const [shareLink, setShareLink] = useState('')

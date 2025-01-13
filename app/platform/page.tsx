@@ -27,15 +27,19 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Workspace } from '@/types/supabase'
 import ActivityFeed from '../../components/ActivityFeed'
 import logger from '@/lib/logger'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
+import type {
+  WorkspaceListProps,
+  HeaderProps,
+  DMListProps,
+  SidebarProps,
+  ChatAreaProps,
+  DirectMessageAreaProps,
+  ProfileModalProps
+} from '@/types/components'
 
-interface WorkspaceListProps {
-  workspaces: Workspace[];
-  onSelectWorkspace: (workspaceId: string) => void;
-  onCreateWorkspace: (e: React.FormEvent) => Promise<void>;
-  newWorkspaceName: string;
-  setNewWorkspaceName: (name: string) => void;
-  onToggleFavorite: (workspaceId: string) => void;
-}
+// Constants
+const MAX_USERS = 40
 
 export default function Platform() {
   const [logs, setLogs] = useState<string[]>([])
@@ -74,6 +78,7 @@ function PlatformWithParams({ addLog }: { addLog: (message: string) => void }) {
 }
 
 function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: string) => void, initialWorkspaceId: string | null }) {
+  const router = useRouter()
   const [user, setUser] = useState<{ id: string; email: string; username?: string } | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState('')
   const [activeChannel, setActiveChannel] = useState('')
@@ -93,9 +98,12 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showSearchResults, setShowSearchResults] = useState(false)
-  const MAX_USERS = 40
-  const router = useRouter()
   const [isDMListCollapsed, setIsDMListCollapsed] = useState(false)
+  
+  // Add mobile-specific states
+  const isMobile = useMediaQuery('(max-width: 768px)')
+  const [showMobileChat, setShowMobileChat] = useState(false)
+  const [showMobileMenu, setShowMobileMenu] = useState(false)
 
   const supabase = createClientComponentClient()
 
@@ -542,6 +550,17 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     }
   };
 
+  const handleMobileNavigation = (type: 'channel' | 'dm', id: string) => {
+    if (type === 'channel') {
+      setActiveChannel(id)
+      setActiveDM(null)
+    } else {
+      setActiveDM(id)
+      setActiveChannel('')
+    }
+    setShowMobileChat(true)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-r from-pink-300 to-blue-300 dark:from-pink-900 dark:to-blue-900">
@@ -582,13 +601,122 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         newWorkspaceName={newWorkspaceName}
         setNewWorkspaceName={setNewWorkspaceName}
         onToggleFavorite={(workspaceId) => {
-          // Add your favorite toggle logic here
           logger.log('Toggle favorite for workspace:', workspaceId)
         }}
+        isMobile={isMobile}
       />
     )
   }
 
+  if (isMobile) {
+    return (
+      <div className="h-screen bg-white dark:bg-gray-800">
+        <Header
+          currentUser={user}
+          isDarkMode={isDarkMode}
+          toggleDarkMode={toggleDarkMode}
+          onCreateWorkspace={() => setActiveWorkspace('')}
+          onOpenProfile={() => setShowProfileModal(true)}
+          onLogout={handleLogout}
+          onReturnToWorkspaceSelection={handleReturnToWorkspaceSelection}
+          activeWorkspaceId={activeWorkspace}
+          onSearch={handleSearch}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          isMobile={true}
+          onMenuToggle={() => setShowMobileMenu(!showMobileMenu)}
+        />
+
+        {/* Mobile Navigation Menu */}
+        {showMobileMenu && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-40" onClick={() => setShowMobileMenu(false)}>
+            <div className="w-64 h-full bg-white dark:bg-gray-800 shadow-lg" onClick={e => e.stopPropagation()}>
+              {/* Menu content */}
+            </div>
+          </div>
+        )}
+
+        {/* Mobile Channel/DM List View */}
+        {!showMobileChat && (
+          <div className="h-[calc(100vh-64px)] overflow-y-auto">
+            <CollapsibleDMList
+              workspaceId={activeWorkspace}
+              onSelectDMAction={(userId) => handleMobileNavigation('dm', userId)}
+              activeUserId={activeDM}
+              currentUserId={user.id}
+              isCollapsed={false}
+              isMobile={true}
+            />
+            <Sidebar
+              activeWorkspace={activeWorkspace}
+              setActiveWorkspace={setActiveWorkspace}
+              activeChannel={activeChannel}
+              setActiveChannel={(channelId) => handleMobileNavigation('channel', channelId)}
+              currentUser={user}
+              workspaces={workspaces}
+              isMobile={true}
+            />
+          </div>
+        )}
+
+        {/* Mobile Chat View */}
+        {showMobileChat && (
+          <div className="h-[calc(100vh-64px)]">
+            <div className="flex items-center p-2 border-b dark:border-gray-700">
+              <button 
+                onClick={() => setShowMobileChat(false)}
+                className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <span className="ml-2 font-medium">
+                {activeChannel ? `#${activeChannel}` : 'Direct Message'}
+              </span>
+            </div>
+            
+            {activeChannel && (
+              <ChatArea
+                activeWorkspace={activeWorkspace}
+                activeChannel={activeChannel}
+                currentUser={user}
+                onSwitchChannel={handleSwitchChannel}
+                userWorkspaces={userWorkspaceIds}
+                isMobile={true}
+              />
+            )}
+            {activeDM && (
+              <DirectMessageArea
+                currentUser={user}
+                otherUserId={activeDM}
+                isDMListCollapsed={false}
+                onClose={() => setShowMobileChat(false)}
+                isMobile={true}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Profile Modal */}
+        {showProfileModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50">
+            <div className="flex items-center justify-center min-h-screen p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6">
+                <ProfileModal
+                  currentUser={user}
+                  onClose={() => setShowProfileModal(false)}
+                  isMobile={true}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Desktop view (original return statement)
   return (
     <div className="min-h-screen bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 p-4">
       <div className="h-[calc(100vh-2rem)] flex flex-col overflow-hidden bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl">

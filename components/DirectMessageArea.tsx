@@ -7,6 +7,7 @@ import EmojiPicker from 'emoji-picker-react'
 import ChatHeader from './ChatHeader'
 import ProfileCard from './ProfileCard'
 import type { SearchResult } from './ChatHeader'
+import { DirectMessageAreaProps } from '@/types/components'
 
 interface DirectMessage {
   id: string;
@@ -39,14 +40,13 @@ interface UserProfile {
   status: 'online' | 'offline' | 'away';
 }
 
-interface DirectMessageAreaProps {
-  currentUser: { id: string; email: string; username?: string };
-  otherUserId: string;
-  isDMListCollapsed?: boolean;
-  onClose?: () => void;
-}
-
-const DirectMessageArea: FC<DirectMessageAreaProps> = ({ currentUser, otherUserId, isDMListCollapsed = false, onClose }) => {
+const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
+  currentUser,
+  otherUserId,
+  isDMListCollapsed,
+  onClose,
+  isMobile
+}) => {
   const [messages, setMessages] = useState<DirectMessage[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)

@@ -3,15 +3,7 @@
 import { useState, useEffect } from 'react'
 import { User, ChevronDown, ChevronRight } from 'lucide-react'
 import { supabase, getWorkspaceUsers } from '../lib/supabase'
-
-type DMListProps = {
-  workspaceId: string
-  onSelectDMAction: (userId: string) => void
-  activeUserId: string | null
-  currentUserId: string
-  isCollapsed?: boolean
-  onCollapsedChange?: (isCollapsed: boolean) => void
-}
+import type { DMListProps } from '@/types/components'
 
 interface DMUser {
   id: string;
