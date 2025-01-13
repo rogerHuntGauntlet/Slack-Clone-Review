@@ -61,21 +61,30 @@ function OnboardingContent() {
         const { data: { session: supabaseSession } } = await supabase.auth.getSession();
         session = supabaseSession;
 
+        console.log('Onboarding page session check:', { session });
+
         if (!session) {
-          console.log("no session found, checking for cookie: ")
+          console.log('No Supabase session, checking cookie');
           try {
-            session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
-            console.log("session from cookie: ", session)
+            const cookieStr = sessionStorage.getItem('cookie');
+            if (cookieStr) {
+              session = JSON.parse(cookieStr);
+              console.log('Found session from cookie:', session);
+            }
           } catch (err) {
-            throw new Error('No session found in fetchExistingData: ' + err);
+            console.error('Error parsing cookie:', err);
+            router.push('/auth');
+            return;
           }
         }
 
         if (!session?.user?.id) {
-          throw new Error('No user ID found in session');
+          console.log('No valid user ID in session');
+          router.push('/auth');
+          return;
         }
 
-        // First check if we have everything we need
+        // Check for existing data
         const [profileResult, workspacesResult] = await Promise.all([
           supabase
             .from('user_profiles')
@@ -86,100 +95,57 @@ function OnboardingContent() {
             .from('workspaces')
             .select('id')
             .eq('created_by', session.user.id)
-        ])
+        ]);
 
-        const hasProfile = profileResult.data && !profileResult.error
-        const hasCreatedWorkspace = workspacesResult.data && workspacesResult.data.length > 0
-        const isNewSignup = session.user.user_metadata?.is_new_signup === true
-        const hasCompletedPayment = session.user.user_metadata?.has_completed_payment === true
+        console.log('User state check:', {
+          hasProfile: !!profileResult.data,
+          workspaceCount: workspacesResult.data?.length
+        });
 
-        // If we have everything and not a new signup, force redirect to platform
-        if (hasProfile && hasCreatedWorkspace && !isNewSignup && !hasCompletedPayment) {
-          console.log('✅ User has completed setup, forcing redirect to platform...')
-          // Clear any onboarding state
-          localStorage.removeItem('onboarding')
-          localStorage.removeItem('onboardingStep')
+        const hasProfile = profileResult.data && !profileResult.error;
+        const hasCreatedWorkspace = workspacesResult.data && workspacesResult.data.length > 0;
+        const isNewSignup = session.user.user_metadata?.is_new_signup === true;
 
-          // Force navigation to platform with no-cache headers
-          const response = await fetch(platformUrl, {
-            headers: {
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'Expires': '0'
-            }
-          })
-          window.location.href = platformUrl
-          return
+        // Only redirect to platform if everything is complete AND not a new signup
+        if (hasProfile && hasCreatedWorkspace && !isNewSignup) {
+          console.log('User has completed setup, redirecting to platform');
+          // Update user metadata to mark onboarding as complete
+          await supabase.auth.updateUser({
+            data: { is_new_signup: false }
+          });
+
+          router.push('/platform');
+          return;
         }
 
-        // Otherwise, load existing data for the form
+        // Load existing data for the form if available
         if (profileResult.data?.username) {
-          console.log('✅ Found existing profile')
-          setUsername(profileResult.data.username)
-          updateStepStatus('profile', 'complete')
-          setCurrentStep(prev => prev === 0 ? 1 : prev)
+          console.log('Found existing profile');
+          setUsername(profileResult.data.username);
+          updateStepStatus('profile', 'complete');
+          setCurrentStep(prev => prev === 0 ? 1 : prev);
         }
 
-        // Check for existing workspace
         if (hasCreatedWorkspace) {
           const { data: workspace } = await supabase
             .from('workspaces')
-            .select('id, name')
+            .select('name')
             .eq('created_by', session.user.id)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single()
+            .single();
 
           if (workspace?.name) {
-            console.log('✅ Found existing workspace')
-            setWorkspaceName(workspace.name)
-            updateStepStatus('workspace', 'complete')
-            setCurrentStep(prev => prev <= 1 ? 2 : prev)
-
-            // Check for existing channel in this workspace
-            const { data: channel } = await supabase
-              .from('channels')
-              .select('name')
-              .eq('workspace_id', workspace.id)
-              .eq('created_by', session.user.id)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .single()
-
-            if (channel?.name) {
-              console.log('✅ Found existing channel')
-              setChannelName(channel.name)
-              updateStepStatus('channel', 'complete')
-
-              // If we have everything, force redirect
-              if (profileResult.data?.username && workspace?.name) {
-                console.log('✅ All steps complete, forcing redirect to platform...')
-                // Update user metadata
-                await supabase.auth.updateUser({
-                  data: { is_new_signup: false }
-                })
-
-                // Clear any onboarding state
-                localStorage.removeItem('onboarding')
-                localStorage.removeItem('onboardingStep')
-
-                // Force navigation to platform with no-cache headers
-         
-                const response = await fetch(platformUrl, {
-                  headers: {
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                  }
-                })
-                window.location.href = platformUrl
-                return
-              }
-            }
+            console.log('Found existing workspace');
+            setWorkspaceName(workspace.name);
+            updateStepStatus('workspace', 'complete');
+            setCurrentStep(prev => prev <= 1 ? 2 : prev);
           }
         }
+
       } catch (error) {
-        console.error('❌ Error fetching existing data:', error)
+        console.error('Error in fetchExistingData:', error);
+        router.push('/auth');
       }
     }
 

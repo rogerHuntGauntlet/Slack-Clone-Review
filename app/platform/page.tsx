@@ -115,52 +115,65 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         const { data: { session: supabaseSession }, error: supabaseError } = await supabase.auth.getSession();
         session = supabaseSession;
 
+        // Debug log the session state
+        logger.log("Initial session check:", { session, supabaseError });
 
         if (!session) {
-          console.log("no session found, checking for cookie: ", supabaseError)
+          logger.log("No Supabase session, checking cookie");
           try {
-            session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
-            console.log("session from cookie: ", session)
-
+            const cookieStr = sessionStorage.getItem('cookie');
+            if (cookieStr) {
+              session = JSON.parse(cookieStr);
+              logger.log("Found session from cookie:", session);
+            }
           } catch (err) {
-            throw new Error('No session latofrm 122 catch error: ' + err);
+            logger.error("Error parsing cookie:", err);
           }
-
         }
 
-        if (session && session.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            username: session.user.user_metadata.username
-          })
-          logger.log("Session found:", session)
-          const userData = await getUserByEmail(session.user.email)
-          if (userData) {
-            setUser(userData)
-            await fetchUserData(userData.id, userData.email)
-          } else {
-            throw new Error('User data not found')
-          }
-        } else {
-          const storedEmail = sessionStorage.getItem('userEmail')
-          if (storedEmail) {
-            const userData = await getUserByEmail(storedEmail)
-            if (userData) {
-              setUser(userData)
-              await fetchUserData(userData.id, userData.email)
-            } else {
-              throw new Error('User data not found')
-            }
-          } else {
-            throw new Error('No user session or stored email')
-          }
+        if (!session?.user) {
+          logger.log("No valid session found, redirecting to auth");
+          router.push('/auth');
+          return;
+        }
+
+        // Check if user has completed onboarding
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        const { data: workspaces } = await supabase
+          .from('workspace_members')
+          .select('workspace_id')
+          .eq('user_id', session.user.id);
+
+        logger.log("User state check:", { hasProfile: !!profile, workspaceCount: workspaces?.length });
+
+        // If user hasn't completed onboarding, redirect them
+        if (!profile || !workspaces?.length) {
+          logger.log("Incomplete profile/workspace, redirecting to onboarding");
+          router.push('/onboarding');
+          return;
+        }
+
+        setUser({
+          id: session.user.id,
+          email: session.user.email || '',
+          username: session.user.user_metadata?.username
+        });
+
+        const userData = await getUserByEmail(session.user.email);
+        if (userData) {
+          setUser(userData);
+          await fetchUserData(userData.id, userData.email);
         }
       } catch (error) {
-        logger.error('Error checking user:', error)
-        router.push('/auth')
+        logger.error('Error in checkUser:', error);
+        router.push('/auth');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     }
     checkUser()
