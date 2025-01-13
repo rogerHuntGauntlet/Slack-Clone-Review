@@ -52,15 +52,27 @@ function OnboardingContent() {
   const [workspaceName, setWorkspaceName] = useState('')
   const [channelName, setChannelName] = useState('')
   const [loading, setLoading] = useState(false)
+  const platformUrl = '/platform'
 
   useEffect(() => {
     const fetchExistingData = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) return
+        let session;
+        const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+        session = supabaseSession;
 
-        console.log('🔍 Checking for existing data...')
-        
+        if (!session) {
+          console.log("no session found, checking for cookie: ")
+          try {
+            session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
+            console.log("session from cookie: ", session)
+
+          } catch (err) {
+            throw new Error('No session latofrm 122 catch error: ' + err);
+          }
+
+        }
+
         // First check if we have everything we need
         const [profileResult, workspacesResult] = await Promise.all([
           supabase
@@ -69,26 +81,26 @@ function OnboardingContent() {
             .eq('id', session.user.id)
             .single(),
           supabase
-            .from('workspace_members')
-            .select('workspace_id')
-            .eq('user_id', session.user.id)
+            .from('workspaces')
+            .select('id')
+            .eq('created_by', session.user.id)
         ])
 
         const hasProfile = profileResult.data && !profileResult.error
-        const hasWorkspaces = workspacesResult.data && workspacesResult.data.length > 0
+        const hasCreatedWorkspace = workspacesResult.data && workspacesResult.data.length > 0
         const isNewSignup = session.user.user_metadata?.is_new_signup === true
 
         // If we have everything and not a new signup, force redirect to platform
-        if (hasProfile && hasWorkspaces && !isNewSignup) {
+        if (hasProfile && hasCreatedWorkspace && !isNewSignup) {
           console.log('✅ User has completed setup, forcing redirect to platform...')
           // Clear any onboarding state
           localStorage.removeItem('onboarding')
           localStorage.removeItem('onboardingStep')
-          
+
           // Force navigation to platform with no-cache headers
-          const platformUrl = '/platform'
-          const response = await fetch(platformUrl, { 
-            headers: { 
+     
+          const response = await fetch(platformUrl, {
+            headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
               'Pragma': 'no-cache',
               'Expires': '0'
@@ -107,7 +119,7 @@ function OnboardingContent() {
         }
 
         // Check for existing workspace
-        if (hasWorkspaces) {
+        if (hasCreatedWorkspace) {
           const { data: workspace } = await supabase
             .from('workspaces')
             .select('id, name')
@@ -136,7 +148,7 @@ function OnboardingContent() {
               console.log('✅ Found existing channel')
               setChannelName(channel.name)
               updateStepStatus('channel', 'complete')
-              
+
               // If we have everything, force redirect
               if (profileResult.data?.username && workspace?.name) {
                 console.log('✅ All steps complete, forcing redirect to platform...')
@@ -144,15 +156,15 @@ function OnboardingContent() {
                 await supabase.auth.updateUser({
                   data: { is_new_signup: false }
                 })
-                
+
                 // Clear any onboarding state
                 localStorage.removeItem('onboarding')
                 localStorage.removeItem('onboardingStep')
-                
+
                 // Force navigation to platform with no-cache headers
-                const platformUrl = '/platform'
-                const response = await fetch(platformUrl, { 
-                  headers: { 
+         
+                const response = await fetch(platformUrl, {
+                  headers: {
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
                     'Pragma': 'no-cache',
                     'Expires': '0'
@@ -173,7 +185,7 @@ function OnboardingContent() {
   }, [])
 
   const updateStepStatus = (stepId: string, status: Step['status'], error?: string) => {
-    setSteps(steps => steps.map(step => 
+    setSteps(steps => steps.map(step =>
       step.id === stepId ? { ...step, status, error } : step
     ))
   }
@@ -190,16 +202,25 @@ function OnboardingContent() {
       updateStepStatus('profile', 'loading')
       setLoading(true)
 
-      const { data: { session } } = await supabase.auth.getSession()
+      let session;
+      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      session = supabaseSession;
+
       if (!session) {
-        console.error('❌ No session found')
-        throw new Error('No session found. Please try logging in again.')
+        console.log("no session found, checking for cookie: ")
+        try {
+          session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
+          console.log("session from cookie: ", session)
+
+        } catch (err) {
+          throw new Error('No session latofrm 122 catch error: ' + err);
+        }
+
       }
-      console.log('✅ Session found:', session.user.id)
 
       const profile = await updateUserProfile(session.user.id, { username })
       console.log('✅ Profile created:', profile)
-      
+
       updateStepStatus('profile', 'complete')
       setCurrentStep(1)
     } catch (error: any) {
@@ -222,16 +243,26 @@ function OnboardingContent() {
       updateStepStatus('workspace', 'loading')
       setLoading(true)
 
-      const { data: { session } } = await supabase.auth.getSession()
+      let session;
+      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      session = supabaseSession;
+
       if (!session) {
-        console.error('❌ No session found')
-        throw new Error('No session found. Please try logging in again.')
+        console.log("no session found, checking for cookie: ")
+        try {
+          session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
+          console.log("session from cookie: ", session)
+
+        } catch (err) {
+          throw new Error('No session latofrm 122 catch error: ' + err);
+        }
+
       }
-      console.log('✅ Session found:', session.user.id)
+
 
       const workspace = await createOnboardingWorkspace(session.user.id, { name: workspaceName })
       console.log('✅ Workspace created:', workspace)
-      
+
       updateStepStatus('workspace', 'complete')
       setCurrentStep(2)
     } catch (error: any) {
@@ -254,12 +285,22 @@ function OnboardingContent() {
       updateStepStatus('channel', 'loading')
       setLoading(true)
 
-      const { data: { session } } = await supabase.auth.getSession()
+      let session;
+      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      session = supabaseSession;
+
       if (!session) {
-        console.error('❌ No session found')
-        throw new Error('No session found. Please try logging in again.')
+        console.log("no session found, checking for cookie: ")
+        try {
+          session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
+          console.log("session from cookie: ", session)
+
+        } catch (err) {
+          throw new Error('No session latofrm 122 catch error: ' + err);
+        }
+
       }
-      console.log('✅ Session found:', session.user.id)
+
 
       // Get the workspace ID
       console.log('🔵 Fetching workspace...')
@@ -284,7 +325,7 @@ function OnboardingContent() {
       console.log('🔵 Creating channel...')
       const channel = await createOnboardingChannel(workspace.id, session.user.id, { name: channelName })
       console.log('✅ Channel created:', channel)
-      
+
       // Mark channel step as complete
       updateStepStatus('channel', 'complete')
 
@@ -293,17 +334,18 @@ function OnboardingContent() {
       const { error: metadataError } = await supabase.auth.updateUser({
         data: { is_new_signup: false }
       })
-      
+
       if (metadataError) {
-        throw new Error('Failed to update user metadata')
+        console.log('Failed to update user metadata: ', metadataError)
       }
+
 
       // Verify metadata update
       const { data: { user } } = await supabase.auth.getUser()
       if (user?.user_metadata?.is_new_signup === true) {
-        throw new Error('Metadata update failed to persist')
+        console.log('Metadata update failed to persist')
       }
-      
+
       console.log('✅ User metadata updated and verified:', user?.user_metadata)
 
       // Clear any onboarding state from local storage
@@ -315,8 +357,8 @@ function OnboardingContent() {
 
       // Force navigation to platform
       console.log('🔄 Forcing redirect to platform...')
-      window.location.replace('/platform')
-      
+      window.location.replace(platformUrl)
+
     } catch (error: any) {
       console.error('❌ Channel creation failed:', error)
       updateStepStatus('channel', 'error', `Failed to create channel: ${error.message}`)
@@ -337,12 +379,11 @@ function OnboardingContent() {
         <div className="mb-8">
           {steps.map((step, index) => (
             <div key={step.id} className="flex items-center mb-4">
-              <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-                step.status === 'complete' ? 'bg-green-500' :
+              <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${step.status === 'complete' ? 'bg-green-500' :
                 step.status === 'loading' ? 'bg-blue-500 animate-pulse' :
-                step.status === 'error' ? 'bg-red-500' :
-                index === currentStep ? 'bg-indigo-500' : 'bg-gray-700'
-              }`}>
+                  step.status === 'error' ? 'bg-red-500' :
+                    index === currentStep ? 'bg-indigo-500' : 'bg-gray-700'
+                }`}>
                 {step.status === 'complete' ? (
                   <Check className="w-6 h-6 text-white" />
                 ) : step.status === 'loading' ? (

@@ -1,0 +1,124 @@
+### Agent Core Rule Document for Cursor
+
+#### Introduction
+This document outlines the core rules and principles governing the behavior, structure, and interaction of an agent in the Cursor environment. These rules ensure consistency, efficiency, and clarity for all agents operating within the system.
+
+---
+
+### 1. **General Principles**
+
+#### 1.1 Consistency
+Agents must ensure all interactions are predictable and adhere to predefined behaviors. Any deviations should be documented and logged.
+
+#### 1.2 Modularity
+Agents should be designed in modular components to facilitate debugging, reuse, and extensibility.
+
+#### 1.3 Security
+Agents must validate and sanitize all inputs to prevent vulnerabilities, including injection attacks and data corruption.
+
+#### 1.4 Performance
+Agents should minimize resource usage and optimize processing time to maintain a responsive and efficient system.
+
+#### 1.5 Transparency
+All actions taken by the agent must be traceable and accompanied by adequate logging for debugging and audit purposes.
+
+---
+
+### 2. **Agent Initialization**
+
+#### 2.1 Configuration
+Agents must load their configuration from a centralized and version-controlled source unless explicitly configured to use local overrides.
+
+#### 2.2 Authentication
+Agents must authenticate securely with the Cursor environment using approved tokens or credentials.
+
+#### 2.3 Dependency Management
+Agents should verify all dependencies are installed and up-to-date upon initialization. Missing dependencies must trigger an error and halt execution until resolved.
+
+---
+
+### 3. **Communication Standards**
+
+#### 3.1 Protocols
+- Agents should use standardized communication protocols (e.g., HTTP, WebSocket, gRPC) as per the Cursor specification.
+- Secure communication (e.g., TLS) is mandatory for all transmissions.
+
+#### 3.2 Message Formats
+- All messages should use JSON unless another format is explicitly required.
+- Messages must include:
+  - A unique identifier
+  - Timestamp
+  - Payload
+
+#### 3.3 Error Handling
+- Agents must return standardized error codes and messages.
+- Critical errors should trigger immediate logging and notification.
+
+---
+
+### 4. **Task Management**
+
+#### 4.1 Task Lifecycle
+- Tasks must transition through the following states:
+  1. Queued
+  2. In Progress
+  3. Completed/Failed
+
+#### 4.2 Resource Allocation
+- Agents should allocate resources dynamically based on task priority and availability.
+
+#### 4.3 Timeout and Retries
+- Tasks must have a defined timeout period.
+- Upon failure, agents may retry tasks up to three times before marking them as failed.
+
+---
+
+### 5. **Error and Logging Guidelines**
+
+#### 5.1 Error Classification
+- Errors should be categorized as:
+  - Informational
+  - Warning
+  - Critical
+
+#### 5.2 Logging Standards
+- Logs must include:
+  - Timestamp
+  - Log level (INFO, WARN, ERROR, DEBUG)
+  - Contextual details (e.g., task ID, agent name)
+
+#### 5.3 Notification
+- Critical errors must trigger notifications to designated administrators.
+
+---
+
+### 6. **Agent Monitoring and Maintenance**
+
+#### 6.1 Health Checks
+- Agents must perform periodic health checks and report their status.
+- Unhealthy agents should initiate a graceful shutdown or self-recovery.
+
+#### 6.2 Updates
+- Updates to agents should follow a CI/CD pipeline and include:
+  - Unit tests
+  - Integration tests
+  - Security audits
+
+#### 6.3 Deprecation
+- Deprecated features or APIs must display warnings for a minimum of one release cycle before removal.
+
+---
+
+### 7. **Termination**
+
+#### 7.1 Graceful Shutdown
+- Agents must release all resources and complete active tasks before shutting down.
+
+#### 7.2 Failure Recovery
+- Agents should attempt automatic recovery upon unexpected termination. If recovery fails, a detailed log must be submitted.
+
+---
+
+#### Conclusion
+By adhering to these core rules, agents in the Cursor environment will maintain high standards of reliability, security, and performance. Regular reviews and updates to this document will ensure it remains aligned with evolving system requirements and best practices.
+

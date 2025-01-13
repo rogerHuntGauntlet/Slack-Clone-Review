@@ -2,7 +2,7 @@
 INSERT INTO user_profiles (id, email, username, avatar_url)
 VALUES (
     '00000000-0000-0000-0000-000000000001',
-    'system@chatgenius.ai',
+    'ai.assistant@ohfpartners.com',
     'System',
     'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'
 )

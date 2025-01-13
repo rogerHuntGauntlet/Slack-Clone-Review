@@ -3,10 +3,11 @@
 import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { createUserProfile } from '@/lib/supabase'
+import { createUserProfile, joinWorkspace } from '@/lib/supabase'
 import { FaGithub, FaGoogle } from 'react-icons/fa'
 import { Eye, EyeOff } from 'lucide-react'
 import { motion } from 'framer-motion'
+
 
 const DEBUG_EMAIL = 'regorhunt02052@gmail.com'
 
@@ -185,24 +186,51 @@ function AuthContent({ workspaceId }: AuthContentProps) {
       })
       if (error) throw error
 
-      setMessage('Sign in successful. Setting up your profile...')
-      sessionStorage.setItem('userEmail', email)
+      // Add this to debug session status
+      const { data: { session } } = await supabase.auth.getSession()
+      debugLog('Current session:', session)
 
+      setMessage('Sign in successful. Setting up your profile...')
+      console.log("signing data: ", user)
+      sessionStorage.setItem('userEmail', email)
+      await sessionStorage.setItem('cookie', JSON.stringify(session))
       // Ensure user profile exists
       if (!user) throw new Error('No user data after sign in')
-
+      try {
+        let ret = await joinWorkspace("00000000-0000-0000-0000-000000000000", user.id)
+        console.log("ret: ", ret)
+      } catch {
+        //
+      }
+      let sessionCookie = sessionStorage.getItem('cookie')
+      console.log("sessionCookie: ", sessionCookie)
       // If this was an intentional logout, go straight to platform
+
+
       if (wasIntentionalLogout) {
         router.push('/platform')
         return
       }
+
+      const { data: accessRecord, error: accessRecordError } = await supabase
+        .from('access_records')
+        .select('*')
+        .eq('user_id', user.id)
+        .single()
+      if (accessRecordError || !accessRecord) {
+        router.push('/access')
+        return
+      }
+
+
+
 
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', user.id)
         .single()
-
+      console.log("profile: ", profile)
       // Check if user needs onboarding
       const needsOnboarding = !profile || profileError
       if (needsOnboarding) {
@@ -217,6 +245,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
         .select('workspace_id')
         .eq('user_id', user.id)
 
+      console.log("workspaces: ", workspaces)
       if (!workspaces || workspaces.length === 0) {
         debugLog('No workspaces found, redirecting to onboarding...')
         router.push('/onboarding')
@@ -227,8 +256,13 @@ function AuthContent({ workspaceId }: AuthContentProps) {
       if (workspaceId) {
         await addUserToWorkspace(user.id)
       }
+      console.log("sending to platform")
+      try {
+        router.push('/platform')
+      } catch (err) {
+        console.log("route err: ", err)
+      }
 
-      router.push('/platform')
     } catch (error: any) {
       setError(error.message)
     } finally {
@@ -261,7 +295,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 
       // Don't create profile here - let the onboarding flow handle it
       setMessage('Account created! You will receive an email to verify your account. After verification, you will be guided through the onboarding process.')
-      
+
       // Store email for debug logging
       sessionStorage.setItem('userEmail', email)
     } catch (error: any) {

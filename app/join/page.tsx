@@ -23,7 +23,7 @@ function JoinContent() {
     try {
       setIsLoading(true)
       const { data: { session }, error: authError } = await supabase.auth.getSession()
-      
+
       if (authError) throw authError
       if (!session) {
         const workspaceId = searchParams.get('workspaceId')
@@ -86,11 +86,23 @@ function JoinContent() {
       if (!workspaceId) {
         throw new Error('No workspace ID provided')
       }
+      let session;
+      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      session = supabaseSession;
 
-      const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
-        throw new Error('No session found')
+        console.log("no session found, checking for cookie: ")
+        try {
+          session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
+          console.log("session from cookie: ", session)
+
+        } catch (err) {
+          throw new Error('No session latofrm 122 catch error: ' + err);
+        }
+
       }
+
+
 
       // Add user to workspace
       const { error: joinError } = await supabase

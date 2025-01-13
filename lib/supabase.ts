@@ -52,7 +52,7 @@ let supabaseInstance: any = null;
 export const getSupabaseClient = () => {
   if (!supabaseInstance) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
     if (!supabaseUrl || !supabaseKey) {
       console.error('❌ [Supabase] Missing required environment variables!');
@@ -72,7 +72,7 @@ export const testSupabaseConnection = async () => {
     const { data, error } = await supabase
       .from('user_profiles')
       .select('count', { count: 'exact', head: true });
-    
+
     if (error) {
       console.error('❌ [Supabase] Connection test error:', error);
       throw error;
@@ -146,7 +146,7 @@ export const fetchMessages = async (channelId: string) => {
       });
       throw error;
     }
-    
+
     console.log('lib/supabase: Successfully fetched messages:', {
       count: messages?.length,
       firstMessage: messages?.[0],
@@ -339,7 +339,7 @@ export const subscribeToChannel = (
       },
       async (payload: RealtimeMessagePayload) => {
         console.log('New message received:', payload);
-        
+
         try {
           const { data: newMessage, error } = await supabase
             .from('messages')
@@ -390,7 +390,7 @@ export const subscribeToChannel = (
       },
       async (payload: RealtimeMessagePayload) => {
         console.log('New reply received:', payload);
-        
+
         try {
           const { data: newReply, error } = await supabase
             .from('messages')
@@ -471,7 +471,7 @@ export const testDatabaseTables = async () => {
 export const getWorkspaces = async (userId?: string) => {
   try {
     logger.log('🏢 [getWorkspaces] Starting to fetch workspaces...')
-    
+
     // If userId is provided, get only their workspaces
     if (userId) {
       const { data, error } = await supabase
@@ -500,7 +500,7 @@ export const getWorkspaces = async (userId?: string) => {
       logger.log(`✅ [getWorkspaces] Fetched ${workspaces.length} workspaces for user`)
       return workspaces
     }
-    
+
     // If no userId, return empty array
     return []
   } catch (error) {
@@ -614,45 +614,72 @@ const createAiWelcomeDm = async (workspaceName: string, creatorId: string, aiUse
 
 export const createWorkspace = async (name: string, userId?: string) => {
   try {
-    logger.log('🏗️ [createWorkspace] Starting workspace creation:', { name })
+    console.log('🏗️ [createWorkspace] Starting workspace creation:', { name, userId })
 
+    // Check userId
     if (!userId) {
+      console.error('❌ [createWorkspace] No userId provided')
       throw new Error('User ID is required to create a workspace')
     }
+    console.log('✅ [createWorkspace] UserId validation passed')
+
+    // Check if workspace exists
+    console.log('🔍 [createWorkspace] Checking if workspace exists:', name)
+    const { data: existingWorkspace, error: existingWorkspaceError } = await supabase
+      .from('workspaces')
+      .select('*')
+      .eq('name', name)
+      .single();
+
+    if (existingWorkspace) {
+      console.error('❌ [createWorkspace] Workspace already exists:', existingWorkspace)
+      throw new Error('A workspace with this name already exists')
+    }
+
+    if (existingWorkspaceError && existingWorkspaceError.code !== 'PGRST116') {
+      console.error('❌ [createWorkspace] Error checking existing workspace:', existingWorkspaceError)
+      throw existingWorkspaceError
+    }
+    console.log('✅ [createWorkspace] Workspace name is available')
 
     // Get system users
+    console.log('🤖 [createWorkspace] Fetching system users...')
     const { data: systemUsers, error: systemError } = await supabase
       .from('user_profiles')
       .select('*')
       .in('id', ['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002']);
 
     if (systemError || !systemUsers || systemUsers.length !== 2) {
-      logger.error('❌ [createWorkspace] Error getting system users:', systemError)
+      console.error('❌ [createWorkspace] Error getting system users:', systemError)
       throw new Error('System users not found')
     }
+    console.log('✅ [createWorkspace] System users found:', systemUsers)
 
     const aiUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000001')
     const broUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000002')
 
     // Create the workspace
+    console.log('🏢 [createWorkspace] Creating workspace...')
     const { data: workspace, error: workspaceError } = await supabase
       .from('workspaces')
       .insert({
-        name
+        name,
+        created_by: userId
       })
       .select()
       .single()
 
     if (workspaceError) {
-      logger.error('❌ [createWorkspace] Error creating workspace:', workspaceError)
+      console.error('❌ [createWorkspace] Error creating workspace:', workspaceError)
       throw workspaceError
     }
-    logger.log('✅ [createWorkspace] Workspace created:', workspace)
+    console.log('✅ [createWorkspace] Workspace created:', workspace)
 
     // Add members
+    console.log('👥 [createWorkspace] Adding members to workspace...')
     const { error: memberError } = await supabase
       .from('workspace_members')
-      .insert([
+      .upsert([
         {
           workspace_id: workspace.id,
           user_id: userId,
@@ -668,259 +695,61 @@ export const createWorkspace = async (name: string, userId?: string) => {
           user_id: broUser.id,
           role: 'member'
         }
-      ])
+      ], {
+        onConflict: 'workspace_id,user_id',
+        ignoreDuplicates: true
+      })
 
     if (memberError) {
-      logger.error('Failed to add members:', memberError)
+      console.error('❌ [createWorkspace] Failed to add members:', memberError)
       throw memberError
     }
+    console.log('✅ [createWorkspace] Members added successfully')
 
-    // Create default channels with created_by
-    const channels = []
+    // Create channels array
     
-    // Create general channel
-    const { data: generalChannel, error: generalError } = await supabase
-      .from('channels')
-      .insert({
-        name: 'general',
-        workspace_id: workspace.id,
-        created_by: userId
-      })
-      .select()
-      .single()
 
-    if (generalError) {
-      logger.error('Failed to create general channel:', generalError)
-      throw generalError
-    }
-    channels.push(generalChannel)
+    // Create general channel
+    let generalChannel = createChannel(
+      workspace.id,
+      'general',
+      userId,
+      'This is the general channel for the workspace.'
+    ) 
+
+    let socialChannel = createChannel(
+      workspace.id,
+      'social',
+      userId,
+      'This is the social channel for the workspace.'
+    ) 
+
+    let workChannel = createChannel(
+      workspace.id,
+      'work',
+      userId,
+      'This is the work channel for the workspace.'
+    ) 
+
+    const channels = [generalChannel, socialChannel, workChannel]
 
     // Add members to general channel
-    await supabase
-      .from('channel_members')
-      .insert([
-        {
-          channel_id: generalChannel.id,
-          user_id: userId,
-          role: 'admin'
-        },
-        {
-          channel_id: generalChannel.id,
-          user_id: aiUser.id,
-          role: 'member'
-        },
-        {
-          channel_id: generalChannel.id,
-          user_id: broUser.id,
-          role: 'member'
-        }
-      ])
+   
 
-    // Create welcome message
-    const { data: welcomeMessage } = await supabase
-      .from('messages')
-      .insert({
-        content: 'Welcome to the general channel! This is our main space for team communication.',
-        channel_id: generalChannel.id,
-        user_id: userId,
-        file_attachments: null,
-        parent_id: null
-      })
-      .select()
-      .single()
+    
+    console.log('✅ [createWorkspace] Members added to general channel')
 
-    // Create AI reply
-    const { data: aiReply } = await supabase
-      .from('messages')
-      .insert({
-        content: `Thanks for creating this channel! I'm the AI Assistant, and I'm here to help make this channel more productive and engaging! I can help with organizing discussions, providing insights, and making sure everyone stays connected. Don't hesitate to mention me if you need any assistance! 🤖✨`,
-        channel_id: generalChannel.id,
-        user_id: aiUser.id,
-        parent_id: welcomeMessage.id,
-        file_attachments: null
-      })
-      .select()
-      .single()
-
-    // Add reactions
-    const emojis = ['👋', '🎉', '🚀', '💡', '❤️'];
-    for (const emoji of emojis) {
-      await supabase.rpc('handle_reaction', {
-        message_id: welcomeMessage.id,
-        user_id: aiUser.id,
-        emoji: emoji
-      });
-      await supabase.rpc('handle_reaction', {
-        message_id: aiReply.id,
-        user_id: aiUser.id,
-        emoji: emoji
-      });
-    }
-
-    // Create social channel
-    const { data: socialChannel, error: socialError } = await supabase
-      .from('channels')
-      .insert({
-        name: 'social',
-        workspace_id: workspace.id,
-        created_by: userId
-      })
-      .select()
-      .single()
-
-    if (socialError) {
-      logger.error('Failed to create social channel:', socialError)
-      throw socialError
-    }
-    channels.push(socialChannel)
-
-    // Add members to social channel
-    await supabase
-      .from('channel_members')
-      .insert([
-        {
-          channel_id: socialChannel.id,
-          user_id: userId,
-          role: 'admin'
-        },
-        {
-          channel_id: socialChannel.id,
-          user_id: aiUser.id,
-          role: 'member'
-        },
-        {
-          channel_id: socialChannel.id,
-          user_id: broUser.id,
-          role: 'member'
-        }
-      ])
-
-    // Create welcome message for social
-    const { data: socialWelcome } = await supabase
-      .from('messages')
-      .insert({
-        content: 'Welcome to the social channel! This is where we can chat about non-work topics and have fun discussions.',
-        channel_id: socialChannel.id,
-        user_id: userId,
-        file_attachments: null,
-        parent_id: null
-      })
-      .select()
-      .single()
-
-    // Create AI reply for social
-    const { data: socialAiReply } = await supabase
-      .from('messages')
-      .insert({
-        content: `Time to have some fun! 🎉 I'll be here to join in the conversations and maybe even share a joke or two! Feel free to start any casual discussions or share interesting things you've found. 🎮 🎵 🎨`,
-        channel_id: socialChannel.id,
-        user_id: aiUser.id,
-        parent_id: socialWelcome.id,
-        file_attachments: null
-      })
-      .select()
-      .single()
-
-    // Add reactions to social messages
-    for (const emoji of emojis) {
-      await supabase.rpc('handle_reaction', {
-        message_id: socialWelcome.id,
-        user_id: aiUser.id,
-        emoji: emoji
-      });
-      await supabase.rpc('handle_reaction', {
-        message_id: socialAiReply.id,
-        user_id: aiUser.id,
-        emoji: emoji
-      });
-    }
-
-    // Create work channel
-    const { data: workChannel, error: workError } = await supabase
-      .from('channels')
-      .insert({
-        name: 'work',
-        workspace_id: workspace.id,
-        created_by: userId
-      })
-      .select()
-      .single()
-
-    if (workError) {
-      logger.error('Failed to create work channel:', workError)
-      throw workError
-    }
-    channels.push(workChannel)
-
-    // Add members to work channel
-    await supabase
-      .from('channel_members')
-      .insert([
-        {
-          channel_id: workChannel.id,
-          user_id: userId,
-          role: 'admin'
-        },
-        {
-          channel_id: workChannel.id,
-          user_id: aiUser.id,
-          role: 'member'
-        },
-        {
-          channel_id: workChannel.id,
-          user_id: broUser.id,
-          role: 'member'
-        }
-      ])
-
-    // Create welcome message for work
-    const { data: workWelcome } = await supabase
-      .from('messages')
-      .insert({
-        content: 'Welcome to the work channel! This is where we focus on tasks, projects, and getting things done.',
-        channel_id: workChannel.id,
-        user_id: userId,
-        file_attachments: null,
-        parent_id: null
-      })
-      .select()
-      .single()
-
-    // Create AI reply for work
-    const { data: workAiReply } = await supabase
-      .from('messages')
-      .insert({
-        content: `Let's get to work! 💪 I'm here to help keep discussions focused and productive. I can help organize tasks, track progress, and provide insights when needed. Just tag me if you need any assistance! 📊 ✅`,
-        channel_id: workChannel.id,
-        user_id: aiUser.id,
-        parent_id: workWelcome.id,
-        file_attachments: null
-      })
-      .select()
-      .single()
-
-    // Add reactions to work messages
-    for (const emoji of emojis) {
-      await supabase.rpc('handle_reaction', {
-        message_id: workWelcome.id,
-        user_id: aiUser.id,
-        emoji: emoji
-      });
-      await supabase.rpc('handle_reaction', {
-        message_id: workAiReply.id,
-        user_id: aiUser.id,
-        emoji: emoji
-      });
-    }
-
-    logger.log('✅ [createWorkspace] Workspace setup completed successfully')
+    console.log('🎉 [createWorkspace] Workspace setup completed successfully:', {
+      workspaceId: workspace.id,
+      channelCount: channels.length
+    })
     return {
       workspace,
       channels
     }
 
   } catch (error) {
-    logger.error('❌ [createWorkspace] Error:', error)
+    console.error('❌ [createWorkspace] Error:', error)
     throw error
   }
 }
@@ -1446,7 +1275,7 @@ const UNIVERSAL_WORKSPACE_NAME = 'OHF Community'
 const addAllUsersToUniversalWorkspace = async () => {
   try {
     logger.log('Adding all users to universal workspace...')
-    
+
     // Get all users
     const { data: users, error: usersError } = await supabase
       .from('user_profiles')

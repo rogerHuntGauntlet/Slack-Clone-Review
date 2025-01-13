@@ -23,22 +23,72 @@ export async function POST(req: Request) {
     // Get current user
     console.log('🔍 Getting user session');
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) {
-      console.error('❌ Session error:', sessionError);
-      return NextResponse.json({ error: 'Session error', details: sessionError }, { status: 401 });
+    
+    // Check Authorization header if auth session fails
+    let finalSession = session;
+    if (!session || sessionError) {
+      console.log('📝 Checking Authorization header');
+      const authHeader = req.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        try {
+          const { data: { user }, error } = await serviceClient.auth.getUser(token);
+          if (user && !error) {
+            finalSession = {
+              user,
+              access_token: token
+            };
+            console.log('✅ Found session from Authorization header:', { userId: user.id });
+          }
+        } catch (error) {
+          console.error('❌ Error validating Authorization header:', error);
+        }
+      }
+
+      // If still no session, check cookies as fallback
+      if (!finalSession) {
+        console.log('📝 Checking cookies for backup session');
+        try {
+          // Try to get the session directly from the route handler client first
+          const { data: { session: cookieSession }, error: cookieError } = await supabase.auth.getSession();
+          if (cookieSession && !cookieError) {
+            finalSession = cookieSession;
+            console.log('✅ Found session from cookie auth:', { userId: cookieSession.user.id });
+          } else {
+            // Fallback to manual cookie parsing if needed
+            const supabaseCookie = cookieStore.get('sb-' + process.env.NEXT_PUBLIC_SUPABASE_PROJECT_REF + '-auth-token');
+            if (supabaseCookie) {
+              const cookieData = JSON.parse(supabaseCookie.value);
+              if (cookieData) {
+                const { data: { user }, error } = await serviceClient.auth.getUser(cookieData.access_token);
+                if (user && !error) {
+                  finalSession = {
+                    user,
+                    access_token: cookieData.access_token
+                  };
+                  console.log('✅ Found session from manual cookie:', { userId: user.id });
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error handling cookie session:', error);
+        }
+      }
     }
-    if (!session) {
-      console.log('❌ No session found');
+
+    if (!finalSession?.user) {
+      console.log('❌ No valid session found in auth or cookies');
       return NextResponse.json({ error: 'Unauthorized - No session' }, { status: 401 });
     }
-    console.log('✅ User session found:', { userId: session.user.id });
+    console.log('✅ Using session for user:', { userId: finalSession.user.id });
 
     // Check if user already has access
     console.log('🔍 Checking existing access');
     const { data: existingAccess, error: accessError } = await serviceClient
       .from('access_records')
       .select('*')
-      .eq('user_id', session.user.id)
+      .eq('user_id', finalSession.user.id)
       .eq('is_active', true)
       .single();
 
@@ -68,7 +118,7 @@ export async function POST(req: Request) {
       const { data: existingFounderCode, error: founderCheckError } = await serviceClient
         .from('founder_codes')
         .select('*')
-        .eq('user_id', session.user.id)
+        .eq('user_id', finalSession.user.id)
         .single();
 
       if (founderCheckError && founderCheckError.code !== 'PGRST116') {
@@ -119,7 +169,7 @@ export async function POST(req: Request) {
         .from('founder_codes')
         .insert({
           code,
-          user_id: session.user.id,
+          user_id: finalSession.user.id,
           used_at: new Date().toISOString()
         })
         .select()
@@ -156,7 +206,7 @@ export async function POST(req: Request) {
       const { error: accessCreateError } = await serviceClient
         .from('access_records')
         .insert({
-          user_id: session.user.id,
+          user_id: finalSession.user.id,
           access_type: 'founder_code',
           reference_id: founderCode.id
         });
@@ -193,7 +243,7 @@ export async function POST(req: Request) {
         const { data: riddleCompletion, error: riddleError } = await serviceClient
           .from('riddle_completions')
           .insert({
-            user_id: session.user.id
+            user_id: finalSession.user.id
           })
           .select()
           .single();
@@ -210,7 +260,7 @@ export async function POST(req: Request) {
         const { error: accessError } = await serviceClient
           .from('access_records')
           .insert({
-            user_id: session.user.id,
+            user_id: finalSession.user.id,
             access_type: 'riddle',
             reference_id: riddleCompletion?.id
           });

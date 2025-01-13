@@ -103,7 +103,23 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     const checkUser = async () => {
       setLoading(true)
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        let session;
+        const { data: { session: supabaseSession }, error: supabaseError } = await supabase.auth.getSession();
+        session = supabaseSession;
+
+
+        if (!session) {
+          console.log("no session found, checking for cookie: ", supabaseError)
+          try {
+            session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
+            console.log("session from cookie: ", session)
+
+          } catch (err) {
+            throw new Error('No session latofrm 122 catch error: ' + err);
+          }
+
+        }
+
         if (session && session.user) {
           setUser({
             id: session.user.id,
@@ -159,7 +175,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
 
       setWorkspaces(userWorkspaces)
       setUserWorkspaceIds(userWorkspaces.map((workspace: { id: string }) => workspace.id))
-      
+
       if (userWorkspaces.length > 0) {
         setShowWorkspaceSelection(true)
       } else {
@@ -238,10 +254,22 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
       }
 
       // Get session first
-      const { data: { session } } = await supabase.auth.getSession()
+      let session;
+      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      session = supabaseSession;
+
       if (!session) {
-        throw new Error('No session found')
+        console.log("no session found, checking for cookie: ")
+        try {
+          session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
+          console.log("session from cookie: ", session)
+
+        } catch (err) {
+          throw new Error('No session latofrm 122 catch error: ' + err);
+        }
+
       }
+
 
       let userData = await getUserByEmail(email)
       const isNewUser = !userData
@@ -297,13 +325,20 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     try {
       addLog('Creating workspace...')
 
-      // First ensure user profile exists
-      const { data: { session } } = await supabase.auth.getSession()
+      // Get session
+      let session;
+      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      session = supabaseSession;
+
       if (!session) {
-        throw new Error('No session found')
+        try {
+          session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
+        } catch (err) {
+          throw new Error('No valid session found');
+        }
       }
 
-      // Check if user profile exists
+      // Check user profile
       let userData = await getUserByEmail(session.user.email!)
       if (!userData) {
         addLog('User profile not found, creating...')
@@ -316,12 +351,20 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         }
       }
 
-      // Now create the workspace
+      // Create workspace with error handling
       const result = await createWorkspace(newWorkspaceName, userData.id)
+        .catch(error => {
+          // Check if this is a duplicate workspace member error
+          if (error.code === '23505' && error.message.includes('workspace_members_pkey')) {
+            // Log the specific error but continue with the workspace creation
+            addLog('Note: User already a member of this workspace')
+            return { workspace: null }
+          }
+          throw error // Re-throw other errors
+        })
+
       if (!result?.workspace) {
-        logger.error('Failed to create workspace: No workspace data returned')
-        setError('Failed to create workspace')
-        return
+        throw new Error('Failed to create workspace')
       }
 
       addLog('Workspace created successfully')
@@ -331,12 +374,11 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         role: 'admin'
       }])
       setNewWorkspaceName('')
-
-      // Don't automatically enter the workspace, let user choose
       addLog('Workspace created, staying on selection screen')
+
     } catch (error: any) {
       logger.error('Error creating workspace:', error)
-      setError(error.message || 'Failed to create workspace. Please try again.')
+      setError(typeof error === 'string' ? error : 'Failed to create workspace. Please try again.')
     }
   }
 
@@ -519,7 +561,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
           <p className="text-gray-600 dark:text-gray-400 mb-6">
             Please visit our homepage to learn more about our platform and get started.
           </p>
-          <a 
+          <a
             href="/"
             className="inline-block bg-blue-500 text-white px-6 py-3 rounded-md hover:bg-blue-600 transition-colors"
           >
@@ -547,8 +589,8 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 p-4">
-      <div className="flex h-[calc(100vh-2rem)] flex-col overflow-hidden bg-gray-50 dark:bg-gray-800/95 rounded-2xl shadow-2xl">
+    <div className="min-h-screen bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 p-4">
+      <div className="h-[calc(100vh-2rem)] flex flex-col overflow-hidden bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl">
         <style jsx global>{`
           /* Modern scrollbar styling */
           * {
@@ -618,7 +660,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
         />
-        
+
         <div className="flex flex-1 overflow-hidden">
           <div className="flex shrink-0">
             <CollapsibleDMList

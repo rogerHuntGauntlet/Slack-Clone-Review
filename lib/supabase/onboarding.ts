@@ -113,7 +113,7 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
     const { data: aiUser } = await supabase
       .from('user_profiles')
       .select('*')
-      .eq('email', 'system@chatgenius.ai')
+      .eq('email', 'ai.assistant@ohfpartners.com')
       .single();
 
     if (!aiUser) {

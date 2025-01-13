@@ -1,11 +1,13 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { PlusCircle, Folder, Star, Search, Plus } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useRouter } from 'next/navigation'
 
 interface Workspace {
   id: string
   name: string
   isFavorite: boolean
+  isPublic?: boolean
 }
 
 interface WorkspaceListProps {
@@ -37,9 +39,14 @@ const WorkspaceCard: React.FC<{
         <div className="p-2 bg-indigo-500/10 dark:bg-indigo-500/20 rounded-lg">
           <Folder className="h-5 w-5 text-indigo-500" />
         </div>
-        <h3 className="font-medium text-gray-900 dark:text-white group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors">
-          {workspace.name}
-        </h3>
+        <div className="flex flex-col">
+          <h3 className="font-medium text-gray-900 dark:text-white group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors">
+            {workspace.name}
+          </h3>
+          {workspace.isPublic && (
+            <span className="text-xs text-gray-500 dark:text-gray-400">Public Workspace</span>
+          )}
+        </div>
       </div>
       <motion.button
         whileHover={{ scale: 1.1 }}
@@ -73,11 +80,30 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
   const [searchTerm, setSearchTerm] = useState('')
   const [isCreating, setIsCreating] = useState(workspaces.length === 0)
   const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
 
-  const filteredWorkspaces = workspaces.filter((workspace) =>
+  useEffect(() => {
+    // If there's only one workspace (OHF Community), redirect to onboarding
+    if (workspaces.length === 1) {
+      console.log('Only one workspace found, redirecting to onboarding...')
+      router.push('/onboarding')
+    }
+  }, [workspaces, router])
+
+  // Sort workspaces with OHF Community first and mark it as public
+  const sortedWorkspaces = [...workspaces].sort((a, b) => {
+    if (a.name === 'OHF Community') return -1
+    if (b.name === 'OHF Community') return 1
+    return 0
+  }).map(workspace => ({
+    ...workspace,
+    isPublic: workspace.name === 'OHF Community'
+  }))
+
+  const filteredWorkspaces = sortedWorkspaces.filter((workspace) =>
     workspace.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
-  const favoriteWorkspaces = workspaces.filter((workspace) => workspace.isFavorite)
+  const favoriteWorkspaces = sortedWorkspaces.filter((workspace) => workspace.isFavorite)
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
