@@ -8,7 +8,8 @@ const nextConfig = {
       'media.tenor.com',
       'localhost',
       'www.gravatar.com',
-      'your-default-ai-avatar.com'
+      'your-default-ai-avatar.com',
+      'avatars.githubusercontent.com'
     ],
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',

@@ -1,7 +1,8 @@
 import { FC, useState, useEffect, useRef } from 'react'
-import { X, Upload, Camera, User } from 'lucide-react'
+import { X, Upload, Camera, User, XCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { ProfileModalProps } from '@/types/components'
+import Image from 'next/image'
 
 interface Profile {
   username: string;
@@ -9,6 +10,46 @@ interface Profile {
   phone: string;
   bio: string;
   employer: string;
+}
+
+const ProfilePhotoPreview: FC<{
+  file: File | null;
+  url: string | null;
+  onRemove: () => void;
+}> = ({ file, url, onRemove }) => {
+  const previewUrl = file ? URL.createObjectURL(file) : url
+
+  useEffect(() => {
+    return () => {
+      if (file && previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  }, [file, previewUrl])
+
+  if (!previewUrl) return null
+
+  return (
+    <div className="relative group rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
+      <div className="aspect-square">
+        <Image
+          src={previewUrl}
+          alt="Profile preview"
+          width={300}
+          height={300}
+          className="w-full h-full object-cover"
+          unoptimized={file !== null}
+        />
+      </div>
+      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <button
+          type="button"
+          onClick={onRemove}
+          className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+        >
+          <XCircle className="w-6 h-6" />
+        </button>
+      </div>
+    </div>
+  )
 }
 
 const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -25,8 +66,11 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   })
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [isVideoReady, setIsVideoReady] = useState(false);
 
   useEffect(() => {
     fetchProfile()
@@ -60,7 +104,14 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   }
 
   const startCamera = async () => {
+    console.log('Starting camera initialization...');
+    setIsLoading(true)
+    setError(null)
+    setIsVideoReady(false)
+    
+    // Set stream first to ensure video element is mounted
     try {
+      console.log('Requesting media stream...');
       const mediaStream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'user',
@@ -68,23 +119,80 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
           height: { ideal: 480 }
         } 
       });
+      console.log('Media stream obtained:', mediaStream.active, 'tracks:', mediaStream.getTracks().length);
+      
+      // Set stream first to trigger video element mount
       setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        // Wait for video to be ready
-        await new Promise((resolve) => {
+      
+      // Wait for video element to be available
+      await new Promise<void>((resolve) => {
+        const checkVideoRef = () => {
           if (videoRef.current) {
-            videoRef.current.onloadedmetadata = resolve;
+            resolve();
+          } else {
+            console.log('Waiting for video element...');
+            setTimeout(checkVideoRef, 100);
           }
-        });
+        };
+        checkVideoRef();
+      });
+      
+      console.log('Video ref available, setting up video element...');
+      const video = videoRef.current!;
+      
+      // Add all possible video events for debugging
+      video.onloadstart = () => console.log('Video loadstart event');
+      video.onloadeddata = () => console.log('Video loadeddata event');
+      video.oncanplay = () => console.log('Video canplay event');
+      video.onplaying = () => console.log('Video playing event');
+      video.onwaiting = () => console.log('Video waiting event');
+      video.onerror = (e) => console.error('Video error event:', e);
+      
+      console.log('Setting video srcObject...');
+      video.srcObject = mediaStream;
+      
+      // Wait for video to be ready
+      await new Promise<void>((resolve) => {
+        const checkVideo = () => {
+          if (video.readyState >= 2) { // HAVE_CURRENT_DATA or better
+            resolve();
+          } else {
+            setTimeout(checkVideo, 100);
+          }
+        };
+        checkVideo();
+      });
+      
+      try {
+        console.log('Video ready, attempting to play...');
+        await video.play();
+        console.log('Video playing successfully');
+        setIsVideoReady(true);
+      } catch (err) {
+        console.error('Error playing video:', err);
+        setError('Failed to start video stream');
       }
-    } catch (error) {
+      
+    } catch (error: any) {
       console.error('Error accessing camera:', error);
-      setError('Failed to access camera. Please check your permissions.');
+      console.log('Error details:', {
+        name: error.name,
+        message: error.message,
+        constraint: error.constraint
+      });
+      setError(error.message || 'Failed to access camera. Please check your permissions.');
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        setStream(null);
+      }
+    } finally {
+      setIsLoading(false)
+      console.log('Camera initialization completed');
     }
   };
 
   const stopCamera = () => {
+    setIsVideoReady(false);
     if (stream) {
       stream.getTracks().forEach(track => track.stop())
       setStream(null)
@@ -92,26 +200,61 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   }
 
   const takePhoto = () => {
-    if (videoRef.current) {
+    if (!videoRef.current) {
+      console.error('Video ref is not available');
+      return;
+    }
+
+    const video = videoRef.current;
+    
+    // Simplified ready check
+    if (!isVideoReady || video.paused) {
+      console.error('Video not ready:', {
+        isVideoReady,
+        paused: video.paused,
+        currentTime: video.currentTime
+      });
+      setError('Video stream not ready. Please wait a moment and try again.');
+      return;
+    }
+    
+    console.log('Starting photo capture process...');
+    setIsLoading(true);
+    
+    try {
       const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      const video = videoRef.current;
-      
-      // Set canvas dimensions to match video
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
-      // Draw the video frame to the canvas
-      context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const context = canvas.getContext('2d');
+      if (!context) {
+        throw new Error('Could not get canvas context');
+      }
       
-      // Convert the canvas to a blob
+      // Simpler drawing approach - draw first, then flip the image
+      context.drawImage(video, 0, 0);
+      
+      // Flip the image after drawing
+      context.save();
+      context.scale(-1, 1);
+      context.drawImage(canvas, -canvas.width, 0);
+      context.restore();
+      
       canvas.toBlob((blob) => {
         if (blob) {
           const file = new File([blob], 'camera_photo.jpg', { type: 'image/jpeg' });
           setAvatarFile(file);
           stopCamera();
+        } else {
+          setError('Failed to capture photo. Please try again.');
         }
-      }, 'image/jpeg', 0.8);
+        setIsLoading(false);
+      }, 'image/jpeg', 0.9);
+      
+    } catch (error: any) {
+      console.error('Error in photo capture process:', error);
+      setError(error.message || 'Failed to capture photo. Please try again.');
+      setIsLoading(false);
     }
   };
 
@@ -192,15 +335,18 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div className="flex items-center gap-6">
+          <div className="flex flex-col sm:flex-row gap-6">
             <div className="relative group">
               <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 p-0.5">
                 <div className="w-full h-full rounded-full overflow-hidden bg-white dark:bg-gray-800">
                   {avatarFile || profile.avatar_url ? (
-                    <img
+                    <Image
                       src={avatarFile ? URL.createObjectURL(avatarFile) : profile.avatar_url}
                       alt="Avatar"
+                      width={96}
+                      height={96}
                       className="w-full h-full object-cover"
+                      unoptimized={avatarFile !== null}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-700">
@@ -230,41 +376,63 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                 </div>
               </div>
             </div>
+          </div>
 
-            {stream && (
-              <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000]">
-                <div className="relative bg-gray-800 p-4 rounded-lg">
+          {stream && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000]">
+              <div className="relative bg-gray-800 p-4 rounded-lg">
+                <div className="relative aspect-[4/3] w-full max-w-2xl">
+                  {isLoading && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  )}
                   <video 
                     ref={videoRef} 
                     autoPlay 
                     playsInline
                     muted
-                    className="rounded-lg max-w-full max-h-[80vh] mirror-mode"
+                    className="w-full h-full rounded-lg [transform:rotateY(180deg)]"
                   />
+                  <div className="absolute top-4 right-4">
+                    {isVideoReady ? (
+                      <div className="flex items-center gap-2 bg-green-500/80 text-white px-3 py-1 rounded-full text-sm">
+                        <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                        Ready
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 bg-yellow-500/80 text-white px-3 py-1 rounded-full text-sm">
+                        <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                        Initializing...
+                      </div>
+                    )}
+                  </div>
                   <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-4">
                     <button
                       type="button"
                       onClick={takePhoto}
-                      className="p-3 bg-blue-500 text-white rounded-full shadow-lg hover:bg-blue-600 transition-colors"
+                      disabled={isLoading || !isVideoReady}
+                      className="p-3 bg-blue-500 text-white rounded-full shadow-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Camera size={24} />
                     </button>
                     <button
                       type="button"
                       onClick={stopCamera}
-                      className="p-3 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors"
+                      disabled={isLoading}
+                      className="p-3 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <X size={24} />
                     </button>
                   </div>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="space-y-4">
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Username
               </label>
               <input
@@ -273,13 +441,12 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                 name="username"
                 value={profile.username}
                 onChange={handleChange}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
-                placeholder="Enter your username"
+                className="mt-1 block w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
 
             <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Phone
               </label>
               <input
@@ -288,13 +455,12 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                 name="phone"
                 value={profile.phone}
                 onChange={handleChange}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
-                placeholder="Enter your phone number"
+                className="mt-1 block w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
 
             <div>
-              <label htmlFor="employer" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="employer" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Employer
               </label>
               <input
@@ -303,13 +469,12 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                 name="employer"
                 value={profile.employer}
                 onChange={handleChange}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
-                placeholder="Enter your employer"
+                className="mt-1 block w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
 
             <div>
-              <label htmlFor="bio" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="bio" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Bio
               </label>
               <textarea
@@ -318,35 +483,28 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                 value={profile.bio}
                 onChange={handleChange}
                 rows={3}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow resize-none"
-                placeholder="Tell us about yourself"
+                className="mt-1 block w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex justify-end gap-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 transition-colors"
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
             >
               Save Changes
             </button>
           </div>
         </form>
       </div>
-
-      <style jsx global>{`
-        .mirror-mode {
-          transform: scaleX(-1);
-        }
-      `}</style>
     </div>
   )
 }
