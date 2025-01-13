@@ -37,6 +37,7 @@ export async function middleware(req: NextRequest) {
 
   // Public routes that don't need any checks
   if (
+    req.nextUrl.pathname === '/' || // Allow homepage
     req.nextUrl.pathname.startsWith('/_next') ||
     req.nextUrl.pathname.startsWith('/public') ||
     req.nextUrl.pathname === '/favicon.ico' ||
@@ -83,7 +84,7 @@ export async function middleware(req: NextRequest) {
       return res
     }
 
-    // If not authenticated, only allow auth page
+    // If not authenticated, only allow auth page and home page
     if (!isAuthenticated) {
       console.log('⚠️ Unauthenticated user, redirecting to auth')
       return NextResponse.redirect(createRedirectUrl('/auth', req))
