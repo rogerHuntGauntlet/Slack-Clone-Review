@@ -1,80 +1,198 @@
-# Authentication and Access Flow
+# Authentication and Access Flow v2
 
-## Page Behaviors
+## Core Principles
+
+1. Users MUST complete each step in sequence:
+   - Authentication
+   - Access Verification
+   - Onboarding
+   - Platform Access
+
+2. No skipping steps:
+   - Cannot access platform without onboarding
+   - Cannot onboard without access
+   - Cannot get access without authentication
+
+## Page Flow Rules
 
 ### 1. Home Page (`/`)
-- **Not Logged In**
-  - Shows "Sign In" button
-  - Opens AuthModal on click
-- **Logged In + Has Access**
-  - Shows "Go to Platform" button
-  - Button redirects to `/platform`
-- **Logged In + No Access**
-  - Shows "Get Access" button
-  - Opens AccessModal on click
+- **Initial Entry Point**
+  - Checks session status
+  - Redirects based on user state
+- **State-Based Routing**
+  ```
+  if (!authenticated) → /auth
+  else if (!has_access) → /access
+  else if (!onboarded) → /onboarding
+  else → /platform
+  ```
 
-### 2. Platform Page (`/platform`)
-- **Not Logged In**
-  - Automatically redirects to home page
-- **Logged In + Has Access**
-  - Stays on page
-  - Shows platform content
-- **Logged In + No Access**
-  - Automatically redirects to home page
+### 2. Auth Page (`/auth`)
+- **Entry Conditions**
+  - No active session
+  - Expired session
+  - Manual logout
+- **Exit Conditions**
+  - Success: MUST redirect to `/access`
+  - Failure: Stay on `/auth` with error
+- **State Mutations**
+  - Sets `authenticated = true`
+  - Creates session
+  - Stores user data
 
-## Modal Components
-
-### 1. AuthModal
-- Appears when clicking "Sign In"
-- Contains:
-  - Email/password login form
-  - OAuth options (Google, GitHub)
-  - Error handling
-  - Success redirects to current page with updated state
-
-### 2. AccessModal
-- Appears when clicking "Get Access"
-- Contains three tabs:
+### 3. Access Page (`/access`)
+- **Entry Conditions**
+  - Must be authenticated
+  - No existing access record
+- **Exit Conditions**
+  - Success: Redirect to `/onboarding`
+  - Failure: Stay on `/access`
+- **Access Methods**
   1. **Founder Code**
-     - Input for founder code
-     - Terms acceptance checkbox
-     - 500 slots limit counter
+     - 500 slots limit
+     - One-time use
+     - Creates access record
   2. **Riddle**
-     - Riddle question display
-     - Answer input
      - Unlimited attempts
+     - Creates access record on success
   3. **Payment**
      - $1,000 one-time payment
-     - Stripe integration
-     - Instant access on success
+     - Creates access record on success
+- **State Mutations**
+  - Creates `access_record`
+  - Sets `has_access = true`
 
-## Access Methods
+### 4. Onboarding Page (`/onboarding`)
+- **Entry Conditions**
+  - Must be authenticated
+  - Must have access record
+  - Incomplete profile/workspace/channel
+- **Required Steps**
+  1. Profile Creation
+     - Username
+     - Basic info
+  2. Workspace Setup
+     - Create or join workspace
+     - Set workspace preferences
+  3. Channel Creation
+     - Create initial channel
+     - Set channel type
+- **Exit Conditions**
+  - ALL steps must be complete
+  - Only then redirect to `/platform`
+- **State Mutations**
+  - Creates user profile
+  - Creates/joins workspace
+  - Creates initial channel
+  - Sets `onboarded = true`
 
-There are three ways to gain access to the platform:
+### 5. Platform Page (`/platform`)
+- **Entry Conditions**
+  - Must be authenticated
+  - Must have access record
+  - Must be fully onboarded
+- **Guard Checks**
+  ```typescript
+  if (!authenticated) → /auth
+  if (!has_access) → /access
+  if (!onboarded) → /onboarding
+  ```
 
-1. **Founder Code**
-   - Limited to 500 slots
-   - First come, first served
-   - One code per user
+## Database Schema Requirements
 
-2. **Riddle Solution**
-   - Unlimited attempts
-   - Must solve correctly
-   - One successful solution per user
+### 1. User Authentication
+```sql
+auth.users
+  - id
+  - email
+  - created_at
+```
 
-3. **Payment**
-   - One-time payment of $1,000
-   - Immediate access upon successful payment
+### 2. Access Records
+```sql
+access_records
+  - user_id
+  - access_type (founder_code, riddle, payment)
+  - granted_at
+  - code_used (for founder codes)
+```
 
-## Technical Implementation
+### 3. Onboarding State
+```sql
+user_profiles
+  - id
+  - username
+  - onboarding_completed
+  - profile_step_completed
+  - workspace_step_completed
+  - channel_step_completed
+```
 
-### State Management
-- Uses React state for modal visibility
-- Tracks authentication and access status
-- Updates UI based on state changes
+## Session Management
 
-### Database Tables
-- `access_records`: Tracks user access
-- `founder_codes`: Manages founder code usage
-- `founder_code_count`: Tracks total codes used
-- `riddle_completions`: Records successful riddles 
+1. **Session Tokens**
+   - JWT with expiration
+   - Stored in secure cookie
+   - Includes access status
+
+2. **State Tracking**
+   ```typescript
+   interface UserState {
+     authenticated: boolean;
+     has_access: boolean;
+     onboarded: boolean;
+     current_workspace: string | null;
+   }
+   ```
+
+## Error Handling
+
+1. **Session Errors**
+   - Expired → `/auth`
+   - Invalid → `/auth`
+   - Missing → `/auth`
+
+2. **Access Errors**
+   - Invalid code → Stay on `/access`
+   - Payment failed → Stay on `/access`
+   - Riddle failed → Stay on `/access`
+
+3. **Onboarding Errors**
+   - Step failure → Stay on step
+   - Network error → Retry mechanism
+   - Invalid data → Validation errors
+
+## Security Considerations
+
+1. **Route Protection**
+   - All routes except `/` and `/auth` require authentication
+   - `/platform` requires all checks
+   - `/onboarding` requires auth + access
+   - `/access` requires auth only
+
+2. **Access Verification**
+   - Check on every protected route
+   - Verify access record exists
+   - Validate access type
+
+3. **State Verification**
+   - Check complete state on navigation
+   - Prevent URL manipulation
+   - Validate all required data
+
+## Implementation Notes
+
+1. **Client-Side**
+   - Use middleware for route protection
+   - Implement loading states
+   - Handle offline scenarios
+
+2. **Server-Side**
+   - Validate all state changes
+   - Double-check access rights
+   - Log security events
+
+3. **Database**
+   - Use transactions for state changes
+   - Implement proper indexing
+   - Monitor access patterns 
