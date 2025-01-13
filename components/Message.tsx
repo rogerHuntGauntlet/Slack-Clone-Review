@@ -6,6 +6,7 @@ import type { MessageType } from '../types/database';
 import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
 import ReactMarkdown from 'react-markdown';
+import CodeBlock from './CodeBlock';
 
 const AVAILABLE_REACTIONS = ['👍', '❤️', '😂', '🎉', '🚀', '👀', '💯', '🙌', '🤔', '🔥'];
 
@@ -16,6 +17,43 @@ interface MessageProps {
   className?: string;
   isThreadView?: boolean;
 }
+
+// Helper function to parse code blocks
+const parseCodeBlocks = (content: string) => {
+  const parts: Array<{ type: 'text' | 'code'; content: string; language?: string }> = [];
+  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    // Add text before code block
+    if (match.index > lastIndex) {
+      parts.push({
+        type: 'text',
+        content: content.slice(lastIndex, match.index)
+      });
+    }
+
+    // Add code block
+    parts.push({
+      type: 'code',
+      language: match[1] || 'plaintext',
+      content: match[2].trim()
+    });
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < content.length) {
+    parts.push({
+      type: 'text',
+      content: content.slice(lastIndex)
+    });
+  }
+
+  return parts;
+};
 
 const Message: React.FC<MessageProps> = ({
   message,
@@ -159,7 +197,8 @@ const Message: React.FC<MessageProps> = ({
         .from('messages')
         .update({ 
           content: editedContent.trim(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          is_edited: true
         })
         .eq('id', message.id);
 
@@ -183,11 +222,6 @@ const Message: React.FC<MessageProps> = ({
         .eq('user_id', currentUser.id);
 
       if (error) throw error;
-      
-      const messageElement = document.getElementById(`message-${message.id}`);
-      if (messageElement) {
-        messageElement.style.display = 'none';
-      }
       
       setShowDeleteConfirm(false);
       toast.success('Message deleted');
@@ -252,9 +286,26 @@ const Message: React.FC<MessageProps> = ({
           />
         ) : (
           <div className="mt-1 text-gray-900 dark:text-white whitespace-pre-wrap break-words">
-            <ReactMarkdown className="prose dark:prose-invert max-w-none break-words">
-              {message.content || ''}
-            </ReactMarkdown>
+            <div className="mt-1 space-y-2">
+              {parseCodeBlocks(message.content).map((part, index) => (
+                part.type === 'code' ? (
+                  <CodeBlock
+                    key={index}
+                    code={part.content}
+                    language={part.language || 'plaintext'}
+                    isEditable={message.user_id === currentUser.id}
+                    onUpdate={(newCode) => {
+                      // Handle code update logic here
+                      console.log('Code updated:', newCode);
+                    }}
+                  />
+                ) : (
+                  <div key={index} className="whitespace-pre-wrap">
+                    {part.content}
+                  </div>
+                )
+              ))}
+            </div>
           </div>
         )}
 
@@ -283,6 +334,15 @@ const Message: React.FC<MessageProps> = ({
                       }}
                     />
                   </a>
+                ) : attachment.file_type === 'video/webm' ? (
+                  <div className="relative rounded-lg overflow-hidden bg-black aspect-video max-w-2xl">
+                    <video
+                      src={attachment.file_url}
+                      className="w-full h-full object-contain"
+                      controls
+                      preload="metadata"
+                    />
+                  </div>
                 ) : (
                   <a
                     key={`file-${index}`}
@@ -410,28 +470,38 @@ const Message: React.FC<MessageProps> = ({
         )}
       </div>
 
-      {showMenu && (
-        <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+      {message.user_id === currentUser.id && (
+        <div className="relative ml-auto" ref={menuRef}>
           <button
-            onClick={() => {
-              setIsEditing(true);
-              setShowMenu(false);
-            }}
-            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+            onClick={() => setShowMenu(!showMenu)}
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
           >
-            <Pencil size={14} />
-            Edit
+            <MoreVertical size={16} />
           </button>
-          <button
-            onClick={() => {
-              setShowDeleteConfirm(true);
-              setShowMenu(false);
-            }}
-            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            <Trash2 size={14} />
-            Delete
-          </button>
+          {showMenu && (
+            <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+              <button
+                onClick={() => {
+                  setIsEditing(true);
+                  setShowMenu(false);
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Pencil size={14} />
+                Edit
+              </button>
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(true);
+                  setShowMenu(false);
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Trash2 size={14} />
+                Delete
+              </button>
+            </div>
+          )}
         </div>
       )}
 

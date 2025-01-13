@@ -53,6 +53,10 @@ export interface ChatAreaProps extends BaseProps {
   onSwitchChannel: (channelId: string) => void
   userWorkspaces: string[]
   onThreadStateChange?: (isOpen: boolean) => void
+  mediaConfig?: {
+    upload: MediaUploadConfig;
+    camera: CameraConfig;
+  };
 }
 
 export interface DirectMessageAreaProps extends BaseProps {
@@ -65,4 +69,37 @@ export interface DirectMessageAreaProps extends BaseProps {
 export interface ProfileModalProps extends BaseProps {
   currentUser: { id: string; email: string; username?: string }
   onClose: () => void
+}
+
+// Media Types
+export interface MediaUploadConfig {
+  maxSize: number;
+  allowedTypes: string[];
+  uploadPath: string;
+}
+
+export interface CameraConfig {
+  quality: number;
+  facingMode: 'user' | 'environment';
+  aspectRatio: number;
+}
+
+export interface MediaPreviewProps {
+  url: string;
+  type: string;
+  onRemove: () => void;
+  uploadProgress?: number;
+}
+
+export interface CameraModalProps {
+  onCapture: (blob: Blob) => void;
+  onClose: () => void;
+  config?: CameraConfig;
+}
+
+export interface MediaUploadButtonProps {
+  onUpload: (files: File[]) => void;
+  config: MediaUploadConfig;
+  disabled?: boolean;
+  children?: React.ReactNode;
 } 

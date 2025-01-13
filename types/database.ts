@@ -44,10 +44,30 @@ export interface FileAttachment {
   file_name: string;
   file_type: string;
   file_url: string;
+  image_metadata?: ImageMetadata;
+  thumbnail_url?: string;
 }
 
 export interface ReactionUpdate {
   messageId: string;
   emoji: string;
   userId: string;
+}
+
+export interface ImageMetadata {
+  width: number;
+  height: number;
+  format: string;
+  size: number;
+  created_at: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+  };
+}
+
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+  users: string[];
 } 
