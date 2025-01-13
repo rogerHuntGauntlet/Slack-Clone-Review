@@ -42,6 +42,7 @@ export async function middleware(req: NextRequest) {
     req.nextUrl.pathname.startsWith('/public') ||
     req.nextUrl.pathname === '/favicon.ico' ||
     req.nextUrl.pathname.startsWith('/auth/callback') ||
+    req.nextUrl.pathname.startsWith('/connect-wallet') || // Allow wallet connection
     req.nextUrl.pathname.startsWith('/api')  // Allow API routes to handle their own auth
   ) {
     return res

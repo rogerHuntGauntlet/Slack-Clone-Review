@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { createUserProfile, joinWorkspace } from '@/lib/supabase'
 import { FaGithub, FaGoogle } from 'react-icons/fa'
 import { Eye, EyeOff } from 'lucide-react'
+import { FaWallet } from 'react-icons/fa'
 import { motion } from 'framer-motion'
 
 
@@ -503,24 +504,30 @@ function AuthContent({ workspaceId }: AuthContentProps) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="mt-4 flex flex-col gap-4">
                 <button
                   type="button"
                   onClick={() => handleOAuthSignIn('github')}
-                  disabled={loading}
-                  className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium text-white bg-white/5 hover:bg-white/10 border border-white/10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#24292F]"
                 >
-                  <FaGithub className="w-5 h-5" />
-                  <span>GitHub</span>
+                  <FaGithub className="h-5 w-5" />
+                  Continue with GitHub
                 </button>
                 <button
                   type="button"
                   onClick={() => handleOAuthSignIn('google')}
-                  disabled={loading}
-                  className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium text-white bg-white/5 hover:bg-white/10 border border-white/10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4285f4]"
                 >
-                  <FaGoogle className="w-5 h-5" />
-                  <span>Google</span>
+                  <FaGoogle className="h-5 w-5 text-[#4285f4]" />
+                  Continue with Google
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push('/connect-wallet')}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4285f4]"
+                >
+                  <FaWallet className="h-5 w-5 text-[#E6007A]" />
+                  Connect Wallet
                 </button>
               </div>
             </div>

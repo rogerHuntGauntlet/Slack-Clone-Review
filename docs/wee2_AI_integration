@@ -1,0 +1,7 @@
+RAG STEPS:
+
+Basic steps to adding the RAG to our project, per Ash:
+Create a Chron Job to put your messages in a Vector Database
+Figure out how to query the database
+After you are getting contextual messages, connect an LLM
+Connect this functionality to an API route
