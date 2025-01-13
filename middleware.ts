@@ -19,13 +19,35 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
   const supabase = createMiddlewareClient({ req, res })
 
+  // Allow POST methods for API routes and form submissions
+  if (req.method === 'POST') {
+    // List of paths that should allow POST
+    const allowPostPaths = [
+      '/auth',
+      '/access',
+      '/onboarding',
+      '/api',
+      '/auth/callback'
+    ]
+    
+    if (allowPostPaths.some(path => req.nextUrl.pathname.startsWith(path))) {
+      return res
+    }
+  }
+
   // Public routes that don't need any checks
   if (
     req.nextUrl.pathname.startsWith('/_next') ||
     req.nextUrl.pathname.startsWith('/public') ||
     req.nextUrl.pathname === '/favicon.ico' ||
-    req.nextUrl.pathname.startsWith('/auth/callback')
+    req.nextUrl.pathname.startsWith('/auth/callback') ||
+    req.nextUrl.pathname.startsWith('/api')  // Allow API routes to handle their own auth
   ) {
+    return res
+  }
+
+  // Only apply auth checks to GET requests
+  if (req.method !== 'GET') {
     return res
   }
 
