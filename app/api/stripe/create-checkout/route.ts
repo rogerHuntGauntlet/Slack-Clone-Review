@@ -60,12 +60,13 @@ export async function POST(req: Request) {
           quantity: 1,
         },
       ],
-      mode: 'subscription',
+      mode: 'payment',
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/platform?success=true`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`,
       metadata: {
         user_id: userId,
       },
+      allow_promotion_codes: true,
     });
 
     return new NextResponse(JSON.stringify({ url: session.url }));

@@ -205,11 +205,26 @@ function AuthContent({ workspaceId }: AuthContentProps) {
       let sessionCookie = sessionStorage.getItem('cookie')
       console.log("sessionCookie: ", sessionCookie)
       // If this was an intentional logout, go straight to platform
-
-
       if (wasIntentionalLogout) {
         router.push('/platform')
         return
+      }
+
+      // Check for post-login action
+      const postLoginActionStr = sessionStorage.getItem('postLoginAction')
+      if (postLoginActionStr) {
+        try {
+          const postLoginAction = JSON.parse(postLoginActionStr)
+          if (postLoginAction.action === 'purchase') {
+            // Clear the stored action
+            sessionStorage.removeItem('postLoginAction')
+            // Redirect back to pricing page to complete the purchase
+            router.push('/pricing')
+            return
+          }
+        } catch (e) {
+          console.error('Error parsing post-login action:', e)
+        }
       }
 
       const { data: accessRecord, error: accessRecordError } = await supabase
@@ -221,9 +236,6 @@ function AuthContent({ workspaceId }: AuthContentProps) {
         router.push('/access')
         return
       }
-
-
-
 
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')

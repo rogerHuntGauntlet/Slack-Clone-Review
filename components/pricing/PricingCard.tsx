@@ -21,34 +21,55 @@ interface PricingCardProps {
 const PricingCard: FC<PricingCardProps> = ({ plan, userId }) => {
   const handleSubscribe = async () => {
     if (!userId) {
-      // Redirect to sign in if not authenticated
-      window.location.href = '/auth';
-      return;
-    }
-
-    if (plan.priceId === 'free') {
-      // Handle free plan subscription
-      window.location.href = '/platform';
+      // Save the intended action and redirect to login
+      sessionStorage.setItem('postLoginAction', JSON.stringify({
+        action: 'purchase',
+        priceId: plan.priceId
+      }));
+      window.location.href = `/auth?redirect=${encodeURIComponent('/pricing')}`;
       return;
     }
 
     try {
-      const response = await fetch('/api/stripe/create-checkout', {
+      const userEmail = sessionStorage.getItem('userEmail');
+      console.log('Attempting to create checkout session with:', {
+        userId,
+        email: userEmail
+      });
+
+      const response = await fetch('/api/create-stripe-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           userId,
-          priceId: plan.priceId,
+          email: userEmail
         }),
       });
 
-      const { url } = await response.json();
-      window.location.href = url;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create checkout session');
+      }
+
+      const { sessionUrl } = await response.json();
+      window.location.href = sessionUrl;
     } catch (error) {
       console.error('Error creating checkout session:', error);
     }
+  };
+
+  const formatPrice = (price: number, interval: string) => {
+    if (price === 0) return 'Free';
+    return (
+      <>
+        <span className="text-4xl font-bold text-gray-900 dark:text-white">${price}</span>
+        {interval !== 'one-time' && (
+          <span className="text-gray-500 dark:text-gray-400">/{interval}</span>
+        )}
+      </>
+    );
   };
 
   return (
@@ -63,7 +84,7 @@ const PricingCard: FC<PricingCardProps> = ({ plan, userId }) => {
         {plan.highlighted && (
           <div className="absolute -top-5 left-0 right-0 flex justify-center">
             <span className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-1 rounded-full text-sm font-medium">
-              Most Popular
+              Limited Time Offer
             </span>
           </div>
         )}
@@ -72,8 +93,7 @@ const PricingCard: FC<PricingCardProps> = ({ plan, userId }) => {
           <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{plan.name}</h3>
           <p className="text-gray-500 dark:text-gray-400 mb-6">{plan.description}</p>
           <div className="mb-6">
-            <span className="text-4xl font-bold text-gray-900 dark:text-white">${plan.price}</span>
-            <span className="text-gray-500 dark:text-gray-400">/{plan.interval}</span>
+            {formatPrice(plan.price, plan.interval)}
           </div>
         </div>
 
@@ -94,7 +114,7 @@ const PricingCard: FC<PricingCardProps> = ({ plan, userId }) => {
               : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600'
           }`}
         >
-          {plan.price === 0 ? 'Get Started' : 'Subscribe Now'}
+          Purchase Access
         </button>
       </div>
     </div>

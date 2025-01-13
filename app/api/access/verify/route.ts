@@ -243,7 +243,8 @@ export async function POST(req: Request) {
         const { data: riddleCompletion, error: riddleError } = await serviceClient
           .from('riddle_completions')
           .insert({
-            user_id: finalSession.user.id
+            user_id: finalSession.user.id,
+            answer: riddleAnswer.toLowerCase().trim()
           })
           .select()
           .single();

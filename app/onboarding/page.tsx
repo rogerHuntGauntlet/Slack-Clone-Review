@@ -66,11 +66,13 @@ function OnboardingContent() {
           try {
             session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
             console.log("session from cookie: ", session)
-
           } catch (err) {
-            throw new Error('No session latofrm 122 catch error: ' + err);
+            throw new Error('No session found in fetchExistingData: ' + err);
           }
+        }
 
+        if (!session?.user?.id) {
+          throw new Error('No user ID found in session');
         }
 
         // First check if we have everything we need
@@ -89,16 +91,16 @@ function OnboardingContent() {
         const hasProfile = profileResult.data && !profileResult.error
         const hasCreatedWorkspace = workspacesResult.data && workspacesResult.data.length > 0
         const isNewSignup = session.user.user_metadata?.is_new_signup === true
+        const hasCompletedPayment = session.user.user_metadata?.has_completed_payment === true
 
         // If we have everything and not a new signup, force redirect to platform
-        if (hasProfile && hasCreatedWorkspace && !isNewSignup) {
+        if (hasProfile && hasCreatedWorkspace && !isNewSignup && !hasCompletedPayment) {
           console.log('✅ User has completed setup, forcing redirect to platform...')
           // Clear any onboarding state
           localStorage.removeItem('onboarding')
           localStorage.removeItem('onboardingStep')
 
           // Force navigation to platform with no-cache headers
-     
           const response = await fetch(platformUrl, {
             headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -252,13 +254,14 @@ function OnboardingContent() {
         try {
           session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
           console.log("session from cookie: ", session)
-
         } catch (err) {
-          throw new Error('No session latofrm 122 catch error: ' + err);
+          throw new Error('No session found while creating workspace: ' + err);
         }
-
       }
 
+      if (!session?.user?.id) {
+        throw new Error('No user ID found in session');
+      }
 
       const workspace = await createOnboardingWorkspace(session.user.id, { name: workspaceName })
       console.log('✅ Workspace created:', workspace)
@@ -294,13 +297,14 @@ function OnboardingContent() {
         try {
           session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
           console.log("session from cookie: ", session)
-
         } catch (err) {
-          throw new Error('No session latofrm 122 catch error: ' + err);
+          throw new Error('No session found while creating channel: ' + err);
         }
-
       }
 
+      if (!session?.user?.id) {
+        throw new Error('No user ID found in session');
+      }
 
       // Get the workspace ID
       console.log('🔵 Fetching workspace...')
@@ -338,7 +342,6 @@ function OnboardingContent() {
       if (metadataError) {
         console.log('Failed to update user metadata: ', metadataError)
       }
-
 
       // Verify metadata update
       const { data: { user } } = await supabase.auth.getUser()

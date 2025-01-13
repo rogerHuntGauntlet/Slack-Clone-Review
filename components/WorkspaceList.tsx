@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { PlusCircle, Folder, Star, Search, Plus } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 
 interface Workspace {
   id: string
@@ -109,6 +110,20 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
     e.preventDefault()
     setIsLoading(true)
     try {
+      let session;
+      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      session = supabaseSession;
+
+      if (!session) {
+        console.log("no session found, checking for cookie: ")
+        try {
+          session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
+          console.log("session from cookie: ", session)
+        } catch (err) {
+          throw new Error('No session found while creating workspace: ' + err);
+        }
+      }
+
       await onCreateWorkspace(e)
       setIsCreating(false)
     } catch (error) {

@@ -473,6 +473,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     try {
       await supabase.auth.signOut()
       sessionStorage.removeItem('userEmail')
+      sessionStorage.removeItem('cookie')
       setUser(null)
       setActiveWorkspace('')
       setActiveChannel('')

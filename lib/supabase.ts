@@ -1,4 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { Database } from '@/types/supabase'
 import type { MessageType, FileAttachment } from '../types/database'
 import type { RealtimePostgresChangesPayload } from '@supabase/realtime-js'
 import logger from '@/lib/logger'
@@ -47,21 +48,13 @@ interface MessageReactionPayload {
 console.log('🔧 [Supabase] Starting Supabase initialization...');
 
 // Create a singleton instance
-let supabaseInstance: any = null;
+let supabaseInstance: ReturnType<typeof createClientComponentClient<Database>> | null = null
 
 export const getSupabaseClient = () => {
   if (!supabaseInstance) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-    if (!supabaseUrl || !supabaseKey) {
-      console.error('❌ [Supabase] Missing required environment variables!');
-      throw new Error('Missing required environment variables for Supabase configuration');
-    }
-
-    supabaseInstance = createClient(supabaseUrl, supabaseKey);
+    supabaseInstance = createClientComponentClient<Database>()
   }
-  return supabaseInstance;
+  return supabaseInstance
 }
 
 export const supabase = getSupabaseClient();
