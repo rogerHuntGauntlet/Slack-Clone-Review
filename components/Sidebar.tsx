@@ -1,5 +1,6 @@
 import { FC, useState, useEffect } from 'react'
-import { User, Hash, Share2, ChevronDown, ChevronRight } from 'lucide-react'
+import { User, Hash, Share2, ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import ChannelList from './ChannelList'
 import UserStatus from './UserStatus'
 import { getChannels } from '../lib/supabase'
@@ -20,6 +21,7 @@ const Sidebar: FC<SidebarProps> = ({
   workspaces,
   isMobile
 }) => {
+  const router = useRouter()
   const [showShareLink, setShowShareLink] = useState(false)
   const [shareLink, setShareLink] = useState('')
   const [showWorkspaces, setShowWorkspaces] = useState(true)
@@ -57,8 +59,6 @@ const Sidebar: FC<SidebarProps> = ({
 
   return (
     <div className="w-75 bg-gray-800 text-white flex flex-col h-full overflow-hidden pt-4">
-      
-
       <div className="mb-4 px-4">
         <UserStatus currentUser={currentUser} />
       </div>

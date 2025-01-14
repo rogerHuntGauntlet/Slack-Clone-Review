@@ -2,8 +2,47 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Database } from '@/types/supabase'
 import type { MessageType, FileAttachment } from '../types/database'
 import type { RealtimePostgresChangesPayload } from '@supabase/realtime-js'
-import logger from '@/lib/logger'
+import { logInfo, logError, logWarning, logDebug, type LogContext } from '@/lib/logger'
 import { createHash } from 'crypto'
+
+// Helper function to safely cast unknown to string
+function safeString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  return String(value);
+}
+
+// Helper function to create a properly typed log context
+function createLogContext(data: Record<string, unknown>): LogContext {
+  const context: LogContext = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value === null || value === undefined) {
+      context[key] = null;
+    } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      context[key] = value;
+    } else if (Array.isArray(value)) {
+      context[key] = value.map(String);
+    } else if (typeof value === 'object') {
+      context[key] = value as Record<string, unknown>;
+    } else {
+      context[key] = String(value);
+    }
+  }
+  return context;
+}
+
+interface WorkspaceData {
+  id: string;
+  name: string;
+  created_at: string;
+  created_by: string;
+  description?: string;
+  is_public: boolean;
+}
+
+interface WorkspaceMemberData {
+  workspace: WorkspaceData;
+}
 
 interface MessagePayload {
   id: string;
@@ -45,7 +84,7 @@ interface MessageReactionPayload {
   eventType: 'UPDATE';
 }
 
-console.log('🔧 [Supabase] Starting Supabase initialization...');
+logInfo('🔧 [Supabase] Starting Supabase initialization...');
 
 // Create a singleton instance
 let supabaseInstance: ReturnType<typeof createClientComponentClient> | null = null
@@ -61,43 +100,41 @@ export const supabase = getSupabaseClient();
 
 export const testSupabaseConnection = async () => {
   try {
-    console.log('🔄 [Supabase] Testing connection...');
+    logInfo('🔄 [Supabase] Testing connection...', { action: 'test_connection' });
     const { data, error } = await supabase
       .from('user_profiles')
       .select('count', { count: 'exact', head: true });
 
     if (error) {
-      console.error('❌ [Supabase] Connection test error:', error);
+      logError('❌ [Supabase] Connection test error:', { error: safeString(error.message) });
       throw error;
     }
-    console.log('✅ [Supabase] Connection test successful');
+    logInfo('✅ [Supabase] Connection test successful', { status: 'success' });
     return true;
   } catch (error) {
-    console.error('❌ [Supabase] Connection test failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('❌ [Supabase] Connection test failed:', { error: errorMessage });
     return false;
   }
 };
-
-// Test the connection immediately
-testSupabaseConnection();
 
 // Add a helper function to check auth status
 const checkAuth = async () => {
   const { data: { session }, error } = await supabase.auth.getSession()
   if (error) {
-    console.error('Auth check error:', error)
+    logError('Auth check error:', { error: safeString(error.message) })
     return false
   }
   if (!session) {
-    console.error('No active session')
+    logError('No active session', { error: 'No session found' })
     return false
   }
-  console.log('Authenticated as:', session.user.id)
+  logInfo('Authenticated as:', { userId: session.user.id })
   return true
 }
 
 export const fetchMessages = async (channelId: string) => {
-  console.log('lib/supabase: Fetching messages for channel:', channelId)
+  logInfo('lib/supabase: Fetching messages for channel:', { channelId, action: 'fetch_messages' })
   try {
     const isAuthed = await checkAuth()
     if (!isAuthed) {
@@ -126,34 +163,36 @@ export const fetchMessages = async (channelId: string) => {
       .is('parent_id', null)
       .order('created_at', { ascending: true });
 
-    console.log('lib/supabase: Generated SQL:', query.toSQL());
+    const sql = safeString(query.toSQL());
+    logDebug('lib/supabase: Generated SQL:', { sql });
 
     const { data: messages, error } = await query;
 
     if (error) {
-      console.error('lib/supabase: Messages fetch error:', {
-        code: error.code,
-        message: error.message,
+      logError('lib/supabase: Messages fetch error:', {
+        error: safeString(error.message),
+        code: safeString(error.code),
         details: error.details,
         hint: error.hint
       });
       throw error;
     }
 
-    console.log('lib/supabase: Successfully fetched messages:', {
-      count: messages?.length,
-      firstMessage: messages?.[0],
-      lastMessage: messages?.[messages?.length - 1]
+    logInfo('lib/supabase: Successfully fetched messages:', {
+      count: messages?.length ?? 0,
+      firstMessageId: messages?.[0]?.id ?? '',
+      lastMessageId: messages?.[messages?.length - 1]?.id ?? ''
     });
     return messages;
   } catch (error) {
-    console.error('lib/supabase: Error fetching messages:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('lib/supabase: Error fetching messages:', { error: errorMessage });
     throw error;
   }
 };
 
 export const fetchChannelName = async (channelId: string) => {
-  console.log('Fetching channel name for:', channelId)
+  logInfo('Fetching channel name for:', createLogContext({ channelId }))
   try {
     const isAuthed = await checkAuth()
     if (!isAuthed) {
@@ -168,19 +207,19 @@ export const fetchChannelName = async (channelId: string) => {
       .single()
 
     if (error) {
-      console.error('Channel fetch error:', {
+      logError('Channel fetch error:', createLogContext({
         code: error.code,
         message: error.message,
         details: error.details,
         hint: error.hint
-      })
+      }))
       throw error
     }
 
-    console.log('Successfully fetched channel:', channelData?.name)
+    logInfo('Successfully fetched channel:', createLogContext({ name: channelData?.name }))
     return channelData?.name
   } catch (error) {
-    console.error('Error in fetchChannelName:', error)
+    logError('Error in fetchChannelName:', createLogContext({ error }))
     throw error
   }
 }
@@ -222,7 +261,8 @@ export const sendMessage = async (
     if (error) throw error;
     return data;
   } catch (error) {
-    console.error('Error sending message:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error sending message:', createLogContext({ error: errorMessage }));
     throw error;
   }
 };
@@ -263,7 +303,8 @@ export const sendReply = async (
     if (error) throw error;
     return data;
   } catch (error) {
-    console.error('Error sending reply:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error sending reply:', createLogContext({ error: errorMessage }));
     throw error;
   }
 };
@@ -308,7 +349,8 @@ export const updateReaction = async (messageId: string, userId: string, emoji: s
     if (updateError) throw updateError;
     return updatedMessage.reactions;
   } catch (error) {
-    console.error('Error updating reaction:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error updating reaction:', createLogContext({ error: errorMessage }));
     throw error;
   }
 }
@@ -331,7 +373,7 @@ export const subscribeToChannel = (
         filter: `channel_id=eq.${channelId} and parent_id=is.null`
       },
       async (payload: RealtimeMessagePayload) => {
-        console.log('New message received:', payload);
+        logInfo('New message received:', payload);
 
         try {
           const { data: newMessage, error } = await supabase
@@ -364,7 +406,8 @@ export const subscribeToChannel = (
             onMessage(newMessage);
           }
         } catch (error) {
-          console.error('Error fetching new message details:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          logError('Error fetching new message details:', createLogContext({ error: errorMessage }));
         }
       }
     )
@@ -382,7 +425,7 @@ export const subscribeToChannel = (
         filter: `channel_id=eq.${channelId} and parent_id=is.not.null`
       },
       async (payload: RealtimeMessagePayload) => {
-        console.log('New reply received:', payload);
+        logInfo('New reply received:', payload);
 
         try {
           const { data: newReply, error } = await supabase
@@ -404,7 +447,8 @@ export const subscribeToChannel = (
             onReply(newReply);
           }
         } catch (error) {
-          console.error('Error fetching new reply details:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          logError('Error fetching new reply details:', createLogContext({ error: errorMessage }));
         }
       }
     )
@@ -440,67 +484,70 @@ export const testDatabaseTables = async () => {
   try {
     // Test workspaces table
     await supabase.from('workspaces').select('*').limit(1)
-    logger.log('Workspaces table exists')
+    logInfo('Workspaces table exists')
 
     // Ensure universal workspace exists
     await ensureUniversalWorkspace()
-    logger.log('Universal workspace verified')
+    logInfo('Universal workspace verified')
 
     // Test channels table
     await supabase.from('channels').select('*').limit(1)
-    logger.log('Channels table exists')
+    logInfo('Channels table exists')
 
     // Test messages table
     await supabase.from('messages').select('*').limit(1)
-    logger.log('Messages table exists')
+    logInfo('Messages table exists')
 
     return true
   } catch (error) {
-    logger.error('Error testing database tables:', error)
-    throw error
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error testing database tables:', createLogContext({ error: errorMessage }));
+    throw error;
   }
 }
 
 export const getWorkspaces = async (userId?: string) => {
   try {
-    logger.log('🏢 [getWorkspaces] Starting to fetch workspaces...')
+    logInfo('🏢 [getWorkspaces] Starting to fetch workspaces...', createLogContext({ action: 'fetch_workspaces' }));
 
     // If userId is provided, get only their workspaces
     if (userId) {
-      const { data, error } = await supabase
+      const { data: workspaces, error } = await supabase
         .from('workspace_members')
         .select(`
-          workspace_id,
-          workspaces (
+          workspace:workspaces (
             id,
-            name
-          ),
-          role
+            name,
+            created_at,
+            created_by
+          )
         `)
-        .eq('user_id', userId)
+        .eq('user_id', userId);
 
       if (error) {
-        logger.error('❌ [getWorkspaces] Database error:', error)
-        throw error
+        logError('❌ [getWorkspaces] Database error:', createLogContext({ error: error.message }));
+        throw error;
       }
 
-      const workspaces = data.map((item: any) => ({
-        id: item.workspaces.id,
-        name: item.workspaces.name,
-        role: item.role,
-      }))
+      // Transform the data to match the expected format
+      const transformedWorkspaces = (workspaces as WorkspaceMemberData[]).map(w => ({
+        id: w.workspace.id,
+        name: w.workspace.name,
+        role: 'member',
+        member_count: 1 // We'll update this later if needed
+      }));
 
-      logger.log(`✅ [getWorkspaces] Fetched ${workspaces.length} workspaces for user`)
-      return workspaces
+      logInfo(`✅ [getWorkspaces] Fetched ${workspaces.length} workspaces for user`, createLogContext({ count: workspaces.length }));
+      return transformedWorkspaces;
     }
 
-    // If no userId, return empty array
-    return []
+    return [];
   } catch (error) {
-    logger.error('❌ [getWorkspaces] Error:', error)
-    return []
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('❌ [getWorkspaces] Error:', createLogContext({ error: errorMessage }));
+    return [];
   }
-}
+};
 
 const getAiUser = async () => {
   const { data: aiUser } = await supabase
@@ -510,7 +557,7 @@ const getAiUser = async () => {
     .single();
 
   if (!aiUser) {
-    console.error('AI user not found');
+    logError('AI user not found');
     throw new Error('AI user not found');
   }
 
@@ -607,17 +654,17 @@ const createAiWelcomeDm = async (workspaceName: string, creatorId: string, aiUse
 
 export const createWorkspace = async (name: string, userId?: string) => {
   try {
-    console.log('🏗️ [createWorkspace] Starting workspace creation:', { name, userId })
+    logInfo('🏢 [createWorkspace] Starting workspace creation:', createLogContext({ name, userId }))
 
     // Check userId
     if (!userId) {
-      console.error('❌ [createWorkspace] No userId provided')
+      logError('❌ [createWorkspace] No userId provided')
       throw new Error('User ID is required to create a workspace')
     }
-    console.log('✅ [createWorkspace] UserId validation passed')
+    logInfo('✅ [createWorkspace] UserId validation passed')
 
     // Check if workspace exists
-    console.log('🔍 [createWorkspace] Checking if workspace exists:', name)
+    logInfo('🔍 [createWorkspace] Checking if workspace exists:', createLogContext({ name }));
     const { data: existingWorkspace, error: existingWorkspaceError } = await supabase
       .from('workspaces')
       .select('*')
@@ -625,34 +672,34 @@ export const createWorkspace = async (name: string, userId?: string) => {
       .single();
 
     if (existingWorkspace) {
-      console.error('❌ [createWorkspace] Workspace already exists:', existingWorkspace)
+      logError('❌ [createWorkspace] Workspace already exists:', createLogContext(existingWorkspace))
       throw new Error('A workspace with this name already exists')
     }
 
     if (existingWorkspaceError && existingWorkspaceError.code !== 'PGRST116') {
-      console.error('❌ [createWorkspace] Error checking existing workspace:', existingWorkspaceError)
+      logError('❌ [createWorkspace] Error checking existing workspace:', createLogContext(existingWorkspaceError))
       throw existingWorkspaceError
     }
-    console.log('✅ [createWorkspace] Workspace name is available')
+    logInfo('✅ [createWorkspace] Workspace name is available')
 
     // Get system users
-    console.log('🤖 [createWorkspace] Fetching system users...')
+    logInfo('🤖 [createWorkspace] Fetching system users...')
     const { data: systemUsers, error: systemError } = await supabase
       .from('user_profiles')
       .select('*')
       .in('id', ['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002']);
 
     if (systemError || !systemUsers || systemUsers.length !== 2) {
-      console.error('❌ [createWorkspace] Error getting system users:', systemError)
+      logError('❌ [createWorkspace] Error getting system users:', createLogContext(systemError))
       throw new Error('System users not found')
     }
-    console.log('✅ [createWorkspace] System users found:', systemUsers)
+    logInfo('✅ [createWorkspace] System users found:', createLogContext(systemUsers))
 
     const aiUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000001')
     const broUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000002')
 
     // Create the workspace
-    console.log('🏢 [createWorkspace] Creating workspace...')
+    logInfo('🏢 [createWorkspace] Creating workspace...')
     const { data: workspace, error: workspaceError } = await supabase
       .from('workspaces')
       .insert({
@@ -663,13 +710,13 @@ export const createWorkspace = async (name: string, userId?: string) => {
       .single()
 
     if (workspaceError) {
-      console.error('❌ [createWorkspace] Error creating workspace:', workspaceError)
+      logError('❌ [createWorkspace] Error creating workspace:', createLogContext(workspaceError))
       throw workspaceError
     }
-    console.log('✅ [createWorkspace] Workspace created:', workspace)
+    logInfo('✅ [createWorkspace] Workspace created:', createLogContext(workspace))
 
     // Add members
-    console.log('👥 [createWorkspace] Adding members to workspace...')
+    logInfo('👥 [createWorkspace] Adding members to workspace...')
     const { error: memberError } = await supabase
       .from('workspace_members')
       .upsert([
@@ -694,10 +741,10 @@ export const createWorkspace = async (name: string, userId?: string) => {
       })
 
     if (memberError) {
-      console.error('❌ [createWorkspace] Failed to add members:', memberError)
+      logError('❌ [createWorkspace] Failed to add members:', createLogContext(memberError))
       throw memberError
     }
-    console.log('✅ [createWorkspace] Members added successfully')
+    logInfo('✅ [createWorkspace] Members added successfully')
 
     // Create channels array
     
@@ -730,20 +777,24 @@ export const createWorkspace = async (name: string, userId?: string) => {
    
 
     
-    console.log('✅ [createWorkspace] Members added to general channel')
+    logInfo('✅ [createWorkspace] Members added to general channel')
 
-    console.log('🎉 [createWorkspace] Workspace setup completed successfully:', {
+    logInfo('🎉 [createWorkspace] Workspace setup completed successfully:', createLogContext({
       workspaceId: workspace.id,
       channelCount: channels.length
-    })
+    }));
     return {
       workspace,
       channels
     }
 
   } catch (error) {
-    console.error('❌ [createWorkspace] Error:', error)
-    throw error
+    if (error instanceof Error) {
+      logError('❌ [createWorkspace] Error:', createLogContext({ error: error.message }));
+    } else {
+      logError('❌ [createWorkspace] Error:', createLogContext({ error: 'Unknown error' }));
+    }
+    throw error;
   }
 }
 
@@ -759,8 +810,9 @@ export const joinWorkspace = async (workspaceId: string, userId: string) => {
 
     if (error) throw error
   } catch (error) {
-    logger.error('Error joining workspace:', error)
-    throw error
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error joining workspace:', createLogContext({ error: errorMessage }));
+    throw error;
   }
 }
 
@@ -776,8 +828,9 @@ export const getUserByEmail = async (email: string) => {
     if (error) throw error
     return data
   } catch (error) {
-    logger.error('Error fetching user:', error)
-    return null
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error fetching user:', createLogContext({ error: errorMessage }));
+    return null;
   }
 }
 
@@ -790,7 +843,7 @@ export const updateUserProfileId = async (oldEmail: string, newId: string) => {
       .eq('email', oldEmail);
 
     if (deleteError) {
-      console.error('Error deleting old profile:', deleteError);
+      logError('Error deleting old profile:', deleteError);
       throw deleteError;
     }
 
@@ -808,14 +861,15 @@ export const updateUserProfileId = async (oldEmail: string, newId: string) => {
       .single();
 
     if (insertError) {
-      console.error('Error creating new profile:', insertError);
+      logError('Error creating new profile:', insertError);
       throw insertError;
     }
 
-    console.log('Updated user profile with correct ID:', newProfile);
+    logInfo('Updated user profile with correct ID:', newProfile);
     return newProfile;
   } catch (error) {
-    console.error('Error in updateUserProfileId:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error in updateUserProfileId:', createLogContext({ error: errorMessage }));
     throw error;
   }
 };
@@ -871,7 +925,7 @@ export const createUserProfile = async (user: { id: string; email?: string }) =>
       .single();
 
     if (insertError) {
-      console.error('Error creating user profile:', insertError);
+      logError('Error creating user profile:', insertError);
       throw insertError;
     }
 
@@ -883,20 +937,21 @@ export const createUserProfile = async (user: { id: string; email?: string }) =>
     await ensureUniversalWorkspace();
     await addUserToUniversalWorkspace(user.id);
 
-    console.log('Created new user profile:', newProfile);
+    logInfo('Created new user profile:', newProfile);
     return newProfile;
   } catch (error) {
-    console.error('Error in createUserProfile:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error in createUserProfile:', createLogContext({ error: errorMessage }));
     throw error;
   }
 };
 
 export const getChannels = async (workspaceId: string, userId: string) => {
   try {
-    logger.log(`Getting channels for workspace ${workspaceId} and user ${userId}`)
+    logInfo(`Getting channels for workspace ${workspaceId} and user ${userId}`)
 
     if (!workspaceId || !userId) {
-      logger.error('Missing required parameters:', { workspaceId, userId })
+      logError('Missing required parameters:', createLogContext({ workspaceId, userId }))
       return [] // Return empty array instead of throwing
     }
 
@@ -910,10 +965,10 @@ export const getChannels = async (workspaceId: string, userId: string) => {
 
     if (memberError) {
       if (memberError.code === 'PGRST116') { // No rows returned
-        logger.log('User is not a member of this workspace:', { userId, workspaceId })
+        logInfo('User is not a member of this workspace:', createLogContext({ userId, workspaceId }))
         return [] // Return empty array for non-members
       }
-      logger.error('Error checking workspace membership:', memberError)
+      logError('Error checking workspace membership:', memberError)
       throw memberError
     }
 
@@ -931,15 +986,16 @@ export const getChannels = async (workspaceId: string, userId: string) => {
       .order('created_at', { ascending: true })
 
     if (channelsError) {
-      logger.error('Error fetching channels:', channelsError)
+      logError('Error fetching channels:', channelsError)
       throw channelsError
     }
 
-    logger.log(`Successfully fetched ${channels?.length || 0} channels`)
+    logInfo(`Successfully fetched ${channels?.length || 0} channels`)
     return channels || []
   } catch (error) {
-    logger.error('Error in getChannels:', error)
-    return [] // Return empty array on error
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error in getChannels:', createLogContext({ error: errorMessage }));
+    return [];
   }
 }
 
@@ -952,7 +1008,8 @@ export const getUserCount = async () => {
     if (error) throw error;
     return count || 0;
   } catch (error) {
-    console.error('Error fetching user count:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error fetching user count:', createLogContext({ error: errorMessage }));
     return 0;
   }
 };
@@ -964,7 +1021,7 @@ export const createChannel = async (
   description?: string
 ) => {
   try {
-    logger.log('🏗️ [createChannel] Starting channel creation:', { workspaceId, name })
+    logInfo('🏗️ [createChannel] Starting channel creation:', createLogContext({ workspaceId, name }))
 
     // Get system users
     const { data: systemUsers, error: systemError } = await supabase
@@ -973,7 +1030,7 @@ export const createChannel = async (
       .in('id', ['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002']);
 
     if (systemError || !systemUsers || systemUsers.length !== 2) {
-      logger.error('❌ [createChannel] Error getting system users:', systemError)
+      logError('❌ [createChannel] Error getting system users:', systemError)
       throw new Error('System users not found')
     }
 
@@ -993,7 +1050,7 @@ export const createChannel = async (
       .single()
 
     if (channelError) {
-      logger.error('❌ [createChannel] Error creating channel:', channelError)
+      logError('❌ [createChannel] Error creating channel:', channelError)
       throw channelError
     }
 
@@ -1019,7 +1076,7 @@ export const createChannel = async (
       ])
 
     if (memberError) {
-      logger.error('❌ [createChannel] Error adding members:', memberError)
+      logError('❌ [createChannel] Error adding members:', memberError)
       throw memberError
     }
 
@@ -1064,12 +1121,13 @@ export const createChannel = async (
       });
     }
 
-    logger.log('✅ [createChannel] Channel created successfully:', channel)
+    logInfo('✅ [createChannel] Channel created successfully:', channel)
     return channel
 
   } catch (error) {
-    logger.error('❌ [createChannel] Error:', error)
-    throw error
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('❌ [createChannel] Error:', createLogContext({ error: errorMessage }));
+    throw error;
   }
 }
 
@@ -1096,7 +1154,8 @@ export const getWorkspaceUsers = async (workspaceId: string) => {
       role: item.role
     }));
   } catch (error) {
-    console.error('Error fetching workspace users:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error fetching workspace users:', createLogContext({ error: errorMessage }));
     return [];
   }
 };
@@ -1132,7 +1191,8 @@ export const getDirectMessages = async (userId: string, otherUserId: string) => 
     if (error) throw error;
     return messages;
   } catch (error) {
-    console.error('Error fetching direct messages:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error fetching direct messages:', createLogContext({ error: errorMessage }));
     throw error;
   }
 };
@@ -1148,7 +1208,8 @@ export const getUserProfile = async (userId: string) => {
     if (error) throw error;
     return data;
   } catch (error) {
-    console.error('Error fetching user profile:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error fetching user profile:', createLogContext({ error: errorMessage }));
     return null;
   }
 };
@@ -1195,7 +1256,8 @@ export const sendDirectMessage = async (
     if (error) throw error;
     return data;
   } catch (error) {
-    console.error('Error sending direct message:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error sending direct message:', createLogContext({ error: errorMessage }));
     throw error;
   }
 };
@@ -1212,7 +1274,8 @@ export const updateUserStatus = async (status: 'online' | 'offline' | 'away', us
     if (error) throw error;
     return data;
   } catch (error) {
-    console.error('Error updating user status:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error updating user status:', createLogContext({ error: errorMessage }));
     throw error;
   }
 };
@@ -1257,7 +1320,8 @@ export const updateDirectMessageReaction = async (messageId: string, userId: str
     if (updateError) throw updateError;
     return updatedMessage.reactions;
   } catch (error) {
-    console.error('Error updating direct message reaction:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error updating direct message reaction:', createLogContext({ error: errorMessage }));
     throw error;
   }
 }
@@ -1267,7 +1331,7 @@ const UNIVERSAL_WORKSPACE_NAME = 'OHF Community'
 
 const addAllUsersToUniversalWorkspace = async () => {
   try {
-    logger.log('Adding all users to universal workspace...')
+    logInfo('Adding all users to universal workspace...')
 
     // Get all users
     const { data: users, error: usersError } = await supabase
@@ -1275,7 +1339,7 @@ const addAllUsersToUniversalWorkspace = async () => {
       .select('id')
 
     if (usersError) {
-      logger.error('Error fetching users:', usersError)
+      logError('Error fetching users:', usersError)
       throw usersError
     }
 
@@ -1284,13 +1348,49 @@ const addAllUsersToUniversalWorkspace = async () => {
       await addUserToUniversalWorkspace(user.id)
     }
 
-    logger.log(`Added ${users.length} users to universal workspace`)
+    logInfo(`Added ${users.length} users to universal workspace`)
     return true
   } catch (error) {
-    logger.error('Error adding all users to universal workspace:', error)
-    throw error
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error adding all users to universal workspace:', createLogContext({ error: errorMessage }));
+    throw error;
   }
 }
+
+const createDefaultChannels = async (workspaceId: string) => {
+  try {
+    const { data: systemUsers } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .in('id', ['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002']);
+
+    if (!systemUsers || systemUsers.length !== 2) {
+      throw new Error('System users not found');
+    }
+
+    const aiUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000001');
+    const broUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000002');
+
+    if (!aiUser) {
+      throw new Error('AI user not found');
+    }
+
+    // Create default channels
+    const channels = ['general', 'announcements', 'random'];
+    for (const channelName of channels) {
+      await createChannel(workspaceId, channelName, aiUser.id);
+    }
+
+    return true;
+  } catch (error) {
+    if (error instanceof Error) {
+      logError('Error creating default channels:', createLogContext({ error: error.message }));
+    } else {
+      logError('Error creating default channels:', createLogContext({ error: 'Unknown error' }));
+    }
+    throw error;
+  }
+};
 
 export const ensureUniversalWorkspace = async () => {
   try {
@@ -1302,13 +1402,13 @@ export const ensureUniversalWorkspace = async () => {
       .single()
 
     if (fetchError && fetchError.code !== 'PGRST116') {
-      logger.error('Error fetching universal workspace:', fetchError)
+      logError('Error fetching universal workspace:', fetchError)
       throw fetchError
     }
 
     // If workspace doesn't exist, create it
     if (!workspace) {
-      logger.log('Creating universal workspace...')
+      logInfo('Creating universal workspace...')
       const { error: createError } = await supabase
         .from('workspaces')
         .insert({
@@ -1319,13 +1419,13 @@ export const ensureUniversalWorkspace = async () => {
         })
 
       if (createError) {
-        logger.error('Error creating universal workspace:', createError)
+        logError('Error creating universal workspace:', createError)
         throw createError
       }
 
       // Create default channels
       await createDefaultChannels(UNIVERSAL_WORKSPACE_ID)
-      logger.log('Universal workspace created successfully')
+      logInfo('Universal workspace created successfully')
 
       // Add all existing users
       await addAllUsersToUniversalWorkspace()
@@ -1333,8 +1433,9 @@ export const ensureUniversalWorkspace = async () => {
 
     return true
   } catch (error) {
-    logger.error('Error ensuring universal workspace:', error)
-    throw error
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error ensuring universal workspace:', createLogContext({ error: errorMessage }));
+    throw error;
   }
 }
 
@@ -1349,76 +1450,26 @@ export const addUserToUniversalWorkspace = async (userId: string) => {
       .single()
 
     if (fetchError && fetchError.code !== 'PGRST116') {
-      logger.error('Error checking universal workspace membership:', fetchError)
+      logError('Error checking universal workspace membership:', fetchError)
       throw fetchError
     }
 
     // If not a member, add them
     if (!membership) {
-      logger.log(`Adding user ${userId} to universal workspace...`)
-      const { error: addError } = await supabase
+      logInfo(`Adding user to universal workspace`)
+      await supabase
         .from('workspace_members')
         .insert({
           workspace_id: UNIVERSAL_WORKSPACE_ID,
           user_id: userId,
-          role: 'member',
-          joined_at: new Date().toISOString()
+          role: 'member'
         })
-
-      if (addError) {
-        logger.error('Error adding user to universal workspace:', addError)
-        throw addError
-      }
-
-      logger.log(`User ${userId} added to universal workspace`)
     }
 
     return true
   } catch (error) {
-    logger.error('Error adding user to universal workspace:', error)
-    throw error
-  }
-}
-
-const createDefaultChannels = async (workspaceId: string) => {
-  try {
-    logger.log(`Creating default channels for workspace ${workspaceId}...`)
-
-    // Create general channel
-    const { data: generalChannel, error: generalError } = await supabase
-      .from('channels')
-      .insert({
-        name: 'general',
-        description: 'General discussion channel',
-        workspace_id: workspaceId,
-        created_at: new Date().toISOString()
-      })
-      .select()
-      .single()
-
-    if (generalError) {
-      logger.error('Error creating general channel:', generalError)
-      throw generalError
-    }
-
-    // Create welcome message
-    const { error: messageError } = await supabase
-      .from('messages')
-      .insert({
-        content: 'Welcome to the workspace! 👋 This is the general channel for all members to chat and collaborate.',
-        channel_id: generalChannel.id,
-        created_at: new Date().toISOString()
-      })
-
-    if (messageError) {
-      logger.error('Error creating welcome message:', messageError)
-      throw messageError
-    }
-
-    logger.log('Default channels created successfully')
-    return true
-  } catch (error) {
-    logger.error('Error creating default channels:', error)
-    throw error
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logError('Error adding user to universal workspace:', createLogContext({ error: errorMessage }));
+    throw error;
   }
 }

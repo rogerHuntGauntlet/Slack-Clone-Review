@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useCallback } from 'react'
 import {
   supabase,
   getWorkspaces,
@@ -26,7 +26,7 @@ import DirectMessageArea from '../../components/DirectMessageArea'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Workspace } from '@/types/supabase'
 import ActivityFeed from '../../components/ActivityFeed'
-import logger from '@/lib/logger'
+import { logInfo, logError, logDebug, type LogContext } from '@/lib/logger'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import type {
   WorkspaceListProps,
@@ -37,6 +37,7 @@ import type {
   DirectMessageAreaProps,
   ProfileModalProps
 } from '@/types/components'
+import Cookies from 'js-cookie';
 
 // Constants
 const MAX_USERS = 40
@@ -50,17 +51,16 @@ export default function Platform() {
 
   useEffect(() => {
     // Set up logger only once when component mounts
-    const originalLog = logger.log;
-    logger.log = addLog;
-
+    const originalLog = addLog;
+    
     // Initial logs
-    addLog('Platform mounting');
+    logInfo('Platform mounting')
 
     // Cleanup
     return () => {
-      logger.log = originalLog; // Reset logger on unmount
+      // No need to reset since we're using the exported functions
     }
-  }, []); // Empty dependency array means this only runs once on mount
+  }, [])
 
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center">
@@ -74,10 +74,15 @@ export default function Platform() {
 function PlatformWithParams({ addLog }: { addLog: (message: string) => void }) {
   const searchParams = useSearchParams()
   const workspaceId = searchParams.get('workspaceId')
+  console.log('Platform: PlatformWithParams mounting');
+  console.log('Platform: Search params:', Object.fromEntries(searchParams.entries()));
+  console.log('Platform: Extracted workspaceId:', workspaceId);
   return <PlatformContent addLog={addLog} initialWorkspaceId={workspaceId} />
 }
 
 function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: string) => void, initialWorkspaceId: string | null }) {
+  console.log('Platform: PlatformContent mounting with initialWorkspaceId:', initialWorkspaceId);
+  
   const router = useRouter()
   const [user, setUser] = useState<{ id: string; email: string; username?: string } | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState('')
@@ -107,6 +112,94 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
 
   const supabase = createClientComponentClient()
 
+  const fetchChannels = useCallback(async (workspaceId: string) => {
+    if (!workspaceId) {
+      logDebug('No workspace ID provided to fetchChannels')
+      return
+    }
+
+    if (!user?.id) {
+      logDebug('No user ID available, deferring channel fetch')
+      return
+    }
+
+    try {
+      logInfo(`Fetching channels for workspace ${workspaceId} and user ${user.id}`)
+      const channels = await getChannels(workspaceId, user.id)
+
+      if (channels.length > 0) {
+        logInfo(`Setting active channel to ${channels[0].id}`)
+        setActiveChannel(channels[0].id)
+      } else {
+        logInfo('No channels found for workspace')
+        setActiveChannel('')
+      }
+    } catch (error) {
+      logError('Error fetching channels:', { error })
+      setError('Failed to fetch channels. Please try again.')
+    }
+  }, [user?.id, setActiveChannel, setError]);
+
+  const handleWorkspaceSelect = useCallback(async (workspaceId: string) => {
+    console.log('Platform: handleWorkspaceSelect called with:', workspaceId);
+    
+    if (!workspaceId) {
+      logError('No workspace ID provided', { action: 'handleWorkspaceSelect' });
+      return;
+    }
+
+    // Set cookie when workspace is selected
+    Cookies.set('lastWorkspaceId', workspaceId, { expires: 7 }); // Expires in 7 days
+    
+    setActiveWorkspace(workspaceId);
+    console.log('Platform: Setting active workspace to:', workspaceId);
+    
+    if (!user?.id) {
+      console.log('Platform: No user ID available');
+      logError('No user ID available', { action: 'handleWorkspaceSelect' })
+      return
+    }
+
+    try {
+      console.log('Platform: Setting active workspace to:', workspaceId);
+      logInfo('Selecting workspace', { workspaceId })
+      setActiveWorkspace(workspaceId)
+
+      // Clear current channel
+      setActiveChannel('')
+
+      // Fetch channels
+      await fetchChannels(workspaceId)
+
+      // Hide workspace selection
+      setShowWorkspaceSelection(false)
+
+      console.log('Platform: Workspace selection complete. Active workspace is now:', workspaceId);
+      logInfo('Workspace selection complete')
+    } catch (error) {
+      console.error('Platform: Error in handleWorkspaceSelect:', error);
+      logError('Error selecting workspace', { error: error instanceof Error ? error.message : String(error) })
+      setError('Failed to select workspace. Please try again.')
+    }
+  }, [user?.id, fetchChannels, setActiveWorkspace, setActiveChannel, setShowWorkspaceSelection, setError]);
+
+  // Handle initial workspace selection
+  useEffect(() => {
+    console.log('Platform: Initial workspace selection effect running');
+    console.log('Platform: Current state:', { loading, initialWorkspaceId, user });
+    
+    if (!loading && initialWorkspaceId && user) {
+      console.log('Platform: Calling handleWorkspaceSelect with initialWorkspaceId:', initialWorkspaceId);
+      handleWorkspaceSelect(initialWorkspaceId);
+    } else {
+      console.log('Platform: Skipping initial workspace selection. Conditions not met:', {
+        loading,
+        hasInitialWorkspaceId: !!initialWorkspaceId,
+        hasUser: !!user
+      });
+    }
+  }, [loading, initialWorkspaceId, user, handleWorkspaceSelect]);
+
   useEffect(() => {
     const checkUser = async () => {
       setLoading(true)
@@ -115,17 +208,14 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         const { data: { session: supabaseSession }, error: supabaseError } = await supabase.auth.getSession();
         session = supabaseSession;
 
-
         if (!session) {
           console.log("no session found, checking for cookie: ", supabaseError)
           try {
             session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
             console.log("session from cookie: ", session)
-
           } catch (err) {
             throw new Error('No session latofrm 122 catch error: ' + err);
           }
-
         }
 
         if (session && session.user) {
@@ -134,7 +224,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
             email: session.user.email || '',
             username: session.user.user_metadata.username
           })
-          logger.log("Session found:", session)
+          logInfo('Session found', { userId: session.user.id })
           const userData = await getUserByEmail(session.user.email)
           if (userData) {
             setUser(userData)
@@ -157,7 +247,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
           }
         }
       } catch (error) {
-        logger.error('Error checking user:', error)
+        logError('Error checking user', { error: error instanceof Error ? error.message : String(error) })
         router.push('/auth')
       } finally {
         setLoading(false)
@@ -172,7 +262,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         getWorkspaces(userId),
         getUserByEmail(email)
       ])
-      logger.log("User data fetched:", { userWorkspaces, userProfile, userId })
+      logInfo('User data fetched', { userId, workspaceCount: userWorkspaces.length })
 
       if (userProfile) {
         setUser(prevUser => ({
@@ -190,7 +280,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         setShowWorkspaceSelection(true)
       }
     } catch (error) {
-      logger.error('Error fetching user data:', error)
+      logError('Error fetching user data', { error: error instanceof Error ? error.message : String(error) })
       setError('Failed to fetch user data. Please try logging in again.')
     }
   }
@@ -209,36 +299,8 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
       setWorkspaces(userWorkspaces)
       return userWorkspaces
     } catch (error) {
-      logger.error('Error fetching workspaces:', error)
+      logError('Error fetching workspaces', { error: error instanceof Error ? error.message : String(error) })
       return []
-    }
-  }
-
-  const fetchChannels = async (workspaceId: string) => {
-    if (!workspaceId) {
-      logger.log('No workspace ID provided to fetchChannels')
-      return
-    }
-
-    if (!user?.id) {
-      logger.log('No user ID available, deferring channel fetch')
-      return
-    }
-
-    try {
-      logger.log(`Fetching channels for workspace ${workspaceId} and user ${user.id}`)
-      const channels = await getChannels(workspaceId, user.id)
-
-      if (channels.length > 0) {
-        logger.log(`Setting active channel to ${channels[0].id}`)
-        setActiveChannel(channels[0].id)
-      } else {
-        logger.log('No channels found for workspace')
-        setActiveChannel('')
-      }
-    } catch (error) {
-      logger.error('Error fetching channels:', error)
-      setError('Failed to fetch channels. Please try again.')
     }
   }
 
@@ -247,7 +309,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
       const count = await getUserCount()
       setUserCount(count)
     } catch (error) {
-      logger.error('Error fetching user count:', error)
+      logError('Error fetching user count', { error: error instanceof Error ? error.message : String(error) })
       setError('Failed to fetch user count. Please try again.')
     }
   }
@@ -313,14 +375,15 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         throw new Error('Failed to get or create user')
       }
     } catch (error: any) {
-      logger.error('Error during email submission:', error)
+      logError('Error during email submission:', error)
       setError(error.message || 'An unexpected error occurred. Please try again.')
     }
   }
 
-  const handleError = (error: any, defaultMessage: string) => {
-    logger.error(defaultMessage, error)
-    setError(error.message || defaultMessage)
+  const handleError = (error: Error | string | unknown, defaultMessage: string) => {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logError('Error occurred', { message: defaultMessage, details: errorMessage })
+    setError(error instanceof Error ? error.message : defaultMessage)
   }
 
   const handleCreateWorkspace = async (e: React.FormEvent) => {
@@ -384,8 +447,8 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
       setNewWorkspaceName('')
       addLog('Workspace created, staying on selection screen')
 
-    } catch (error: any) {
-      logger.error('Error creating workspace:', error)
+    } catch (error) {
+      logError('Error creating workspace', { error: error instanceof Error ? error.message : String(error) })
       setError(typeof error === 'string' ? error : 'Failed to create workspace. Please try again.')
     }
   }
@@ -411,40 +474,9 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
       addLog(`Successfully joined workspace ${workspaceId}`)
       return updatedWorkspaces
     } catch (error) {
-      logger.error('Error joining workspace:', error)
+      logError('Error joining workspace:', { error: error instanceof Error ? error.message : String(error) })
       setError('Failed to join workspace. Please try again.')
       throw error
-    }
-  }
-
-  const handleWorkspaceSelect = async (workspaceId: string) => {
-    if (!workspaceId) {
-      logger.error('No workspace ID provided to handleWorkspaceSelect')
-      return
-    }
-
-    if (!user?.id) {
-      logger.error('No user ID available for workspace selection')
-      return
-    }
-
-    try {
-      logger.log(`Selecting workspace ${workspaceId}`)
-      setActiveWorkspace(workspaceId)
-
-      // Clear current channel
-      setActiveChannel('')
-
-      // Fetch channels
-      await fetchChannels(workspaceId)
-
-      // Hide workspace selection
-      setShowWorkspaceSelection(false)
-
-      logger.log('Workspace selection complete')
-    } catch (error) {
-      logger.error('Error selecting workspace:', error)
-      setError('Failed to select workspace. Please try again.')
     }
   }
 
@@ -472,47 +504,52 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
       if (error) throw error
       return data.name
     } catch (error) {
-      logger.error('Error fetching workspace name:', error)
+      logError('Error fetching workspace name', { error: error instanceof Error ? error.message : String(error) })
       return null
     }
   }
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut()
-      sessionStorage.removeItem('userEmail')
-      sessionStorage.removeItem('cookie')
-      setUser(null)
-      setActiveWorkspace('')
-      setActiveChannel('')
-      setActiveDM(null)
-      setWorkspaces([])
-      setNewWorkspaceName('')
-      setError(null)
-      setShowProfileModal(false)
-      setJoiningWorkspaceName(null)
-      setShowWorkspaceSelection(false)
-      setUserWorkspaceIds([])
-      logger.log('User logged out successfully')
-      router.push('/auth')
+      // Clear workspace cookie on logout
+      Cookies.remove('lastWorkspaceId');
+      
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      router.push('/auth');
     } catch (error) {
-      logger.error('Error signing out:', error)
-      setError('Failed to sign out. Please try again.')
+      console.error('Error logging out:', error);
     }
-  }
+  };
 
   const handleReturnToWorkspaceSelection = () => {
-    setActiveWorkspace('')
-    setActiveChannel('')
-    setActiveDM(null)
-    setShowWorkspaceSelection(true)
-  }
+    // Clear cookie when returning to workspace selection
+    Cookies.remove('lastWorkspaceId');
+    setActiveWorkspace('');
+    setActiveChannel('');
+    setActiveDM(null);
+    setShowWorkspaceSelection(true);
+  };
+
+  // Check cookie on mount
+  useEffect(() => {
+    if (!loading && user) {
+      const lastWorkspaceId = Cookies.get('lastWorkspaceId');
+      console.log('Platform: Found lastWorkspaceId in cookie:', lastWorkspaceId);
+      
+      if (lastWorkspaceId) {
+        console.log('Platform: Auto-selecting workspace from cookie:', lastWorkspaceId);
+        handleWorkspaceSelect(lastWorkspaceId);
+      }
+    }
+  }, [loading, user]);
 
   const handleSearch = async (query: string) => {
     if (!query.trim() || !activeWorkspace) return;
 
     try {
-      logger.log(`Searching for: "${query}" in workspace ${activeWorkspace}`)
+      logInfo(`Searching for: "${query}" in workspace ${activeWorkspace}`)
       const { data, error } = await supabase
         .from('messages')
         .select(`
@@ -537,15 +574,15 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         .limit(20);
 
       if (error) {
-        logger.error('Search error:', error)
+        logError('Search error', { error: error.message })
         throw error;
       }
 
-      logger.log(`Found ${data?.length || 0} results`)
+      logInfo('Search results found', { count: data?.length || 0 })
       setSearchResults(data || []);
       setShowSearchResults(true);
     } catch (error) {
-      logger.error('Error searching messages:', error);
+      logError('Error searching messages', { error: error instanceof Error ? error.message : String(error) })
       setError('Failed to search messages');
     }
   };
@@ -601,7 +638,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         newWorkspaceName={newWorkspaceName}
         setNewWorkspaceName={setNewWorkspaceName}
         onToggleFavorite={(workspaceId) => {
-          logger.log('Toggle favorite for workspace:', workspaceId)
+          logInfo('Toggle favorite', { action: 'toggleFavorite', workspaceId })
         }}
         isMobile={isMobile}
       />

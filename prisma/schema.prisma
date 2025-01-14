@@ -1,0 +1,32 @@
+// This is your Prisma schema file
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Message {
+  id              String    @id @default(cuid())
+  content         String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  userId          String
+  channelId       String?
+  directMessageId String?
+  isVectorized    Boolean   @default(false)
+}
+
+model Agent {
+  id          String    @id @default(cuid())
+  name        String
+  email       String    @unique
+  description String?
+  avatar      String?
+  type        String    // e.g., 'assistant', 'idea_checker', etc.
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+} 

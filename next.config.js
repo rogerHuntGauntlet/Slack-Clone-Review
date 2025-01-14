@@ -24,7 +24,24 @@ const nextConfig = {
   },
   experimental: {
     esmExternals: 'loose'
-  }
+  },
+  webpack: (config) => {
+    // Enable WebAssembly
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+    }
+
+    // Add WASM file handling
+    config.module.rules.push({
+      test: /\.wasm$/,
+      type: 'webassembly/async'
+    })
+
+    return config
+  },
+  // Add WASM to allowed file types
+  webpack5: true,
 }
 
 module.exports = nextConfig 

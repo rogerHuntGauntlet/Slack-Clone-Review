@@ -8,6 +8,8 @@ import ChatHeader from './ChatHeader'
 import ProfileCard from './ProfileCard'
 import type { SearchResult } from './ChatHeader'
 import { DirectMessageAreaProps } from '@/types/components'
+import { processDMMessage, formatMessageHistory, getSuggestedResponse } from '../lib/langchain-dm'
+import ReactMarkdown from 'react-markdown'
 
 interface DirectMessage {
   id: string;
@@ -53,8 +55,12 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
   const [otherUser, setOtherUser] = useState<UserProfile | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isBroTyping, setIsBroTyping] = useState(false)
+  const [isAITyping, setIsAITyping] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [streamingResponse, setStreamingResponse] = useState('')
+  const [suggestedResponse, setSuggestedResponse] = useState('')
 
   useEffect(() => {
     if (otherUserId === 'bro-user') {
@@ -79,6 +85,13 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // Add new effect for streaming response
+  useEffect(() => {
+    if (streamingResponse) {
+      scrollToBottom()
+    }
+  }, [streamingResponse])
 
   const fetchMessages = async () => {
     try {
@@ -108,17 +121,62 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
+    const form = e.target as HTMLFormElement
     setError(null)
     if (newMessage.trim()) {
+      // Special handling for AI user
+      if (otherUserId === '00000000-0000-0000-0000-000000000001') {
+        try {
+          // Send user message immediately
+          const userMessage = await sendDirectMessage(currentUser.id, otherUserId, newMessage.trim())
+          setMessages([...messages, userMessage])
+          setNewMessage('')
+          // Reset textarea height
+          const textarea = form.querySelector('textarea')
+          if (textarea) textarea.style.height = '40px'
+          setIsProcessing(true)
+          setStreamingResponse('')
+          setIsAITyping(true)
+
+          // Process with Langchain
+          const history = formatMessageHistory(messages)
+          const response = await processDMMessage(
+            newMessage.trim(),
+            history,
+            (token) => {
+              setStreamingResponse(prev => prev + token)
+            }
+          )
+
+          // Send AI response
+          const aiMessage = await sendDirectMessage(otherUserId, currentUser.id, response)
+          setMessages(prev => [...prev, aiMessage])
+          setStreamingResponse('')
+          setIsAITyping(false)
+
+          // Get suggestion for next response
+          const suggestion = await getSuggestedResponse([...history, { role: 'assistant', content: response, timestamp: new Date().toISOString() }])
+          setSuggestedResponse(suggestion)
+        } catch (error) {
+          console.error('Error processing AI message:', error)
+          setError('Failed to process message. Please try again.')
+          setIsAITyping(false)
+        } finally {
+          setIsProcessing(false)
+        }
+        return
+      }
+
       // Special handling for Bro user
       if (otherUserId === 'bro-user') {
+        console.log('Bro user detected')
         const actualMessage = newMessage // Store the original message
         setNewMessage('') // Clear input immediately
         
         // Create a client-side message object for the user's "Yo"
         const userMessage: DirectMessage = {
           id: Date.now().toString(),
-          content: 'Yo', // Always send "Yo" regardless of what was typed
+          content: 'Bro', // Always send "Yo" regardless of what was typed
           created_at: new Date().toISOString(),
           user_id: currentUser.id,
           receiver_id: 'bro-user',
@@ -148,7 +206,7 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
             setIsBroTyping(false)
             const broResponse: DirectMessage = {
               id: Date.now().toString(),
-              content: 'Yo',
+              content: 'Bro',
               created_at: new Date().toISOString(),
               user_id: 'bro-user',
               receiver_id: currentUser.id,
@@ -303,17 +361,36 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
             <div className={`max-w-xs lg:max-w-md xl:max-w-lg ${
               message.sender.id === currentUser.id ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-700'
             } rounded-lg p-3 text-white`}>
-              <p className="text-sm">{message.content}</p>
+              <div className="prose prose-sm prose-invert marker:text-white prose-p:text-white prose-li:text-white prose-headings:text-white prose-code:text-white">
+                <ReactMarkdown>{message.content}</ReactMarkdown>
+              </div>
               <p className="text-xs text-gray-200 mt-1">{new Date(message.created_at).toLocaleString()}</p>
             </div>
           </div>
         ))}
-        {isBroTyping && (
+        {isAITyping && !streamingResponse && (
           <div className="flex justify-start">
             <div className="flex items-center space-x-2 bg-gray-300 dark:bg-gray-700 rounded-lg p-3">
               <img 
-                src="https://www.feistees.com/images/uploads/2015/05/silicon-valley-bro2bro-app-t-shirt_2.jpg" 
-                alt="Bro" 
+                src={otherUser?.avatar_url || 'https://your-default-ai-avatar.com'} 
+                alt="AI Assistant" 
+                className="w-6 h-6 rounded-full"
+              />
+              <div className="flex space-x-1">
+                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
+              <span className="text-sm text-white">AI Assistant is typing...</span>
+            </div>
+          </div>
+        )}
+        {isBroTyping && !streamingResponse && (
+          <div className="flex justify-start">
+            <div className="flex items-center space-x-2 bg-gray-300 dark:bg-gray-700 rounded-lg p-3">
+              <img 
+                src={otherUser?.avatar_url || 'https://your-default-ai-avatar.com'} 
+                alt="AI Assistant" 
                 className="w-6 h-6 rounded-full"
               />
               <div className="flex space-x-1">
@@ -325,39 +402,42 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
             </div>
           </div>
         )}
+        {isProcessing && streamingResponse && (
+          <div className="flex justify-start">
+            <div className="max-w-xs lg:max-w-md xl:max-w-lg bg-gray-300 dark:bg-gray-700 rounded-lg p-3">
+              <div className="prose prose-sm prose-invert marker:text-white prose-p:text-white prose-li:text-white prose-headings:text-white prose-code:text-white">
+                <ReactMarkdown>{streamingResponse}</ReactMarkdown>
+              </div>
+              <div className="flex space-x-1 mt-2">
+                <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
+                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
+            </div>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
-      <form onSubmit={handleSendMessage} className="p-4 bg-gray-100 dark:bg-gray-800 flex items-end">
-        <button
-          type="button"
-          className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors duration-200"
-          onClick={() => alert('File upload not implemented in this demo')}
-        >
-          <Paperclip size={24} />
-        </button>
+      <form onSubmit={handleSendMessage} className="p-4 bg-gray-100 dark:bg-gray-800 flex items-end gap-2">
         <textarea
           value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
+          onChange={(e) => {
+            setNewMessage(e.target.value);
+            // Auto-adjust height
+            e.target.style.height = 'auto';
+            e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`; // Max height of 200px
+          }}
           onKeyDown={handleKeyPress}
           placeholder="Type your message..."
-          className="flex-1 p-2 mx-2 rounded-lg border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
-          rows={3}
+          className="flex-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none min-h-[40px] max-h-[200px] overflow-y-auto"
+          style={{ height: '40px' }}
         />
-        <div className="flex flex-col justify-end space-y-2">
-          <button
-            type="button"
-            className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors duration-200"
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-          >
-            <Smile size={24} />
-          </button>
-          <button
-            type="submit"
-            className="bg-blue-500 text-white p-2 rounded-full hover:bg-blue-600 transition-colors duration-200"
-          >
-            <Send size={24} />
-          </button>
-        </div>
+        <button
+          type="submit"
+          className="bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition-colors duration-200 flex-shrink-0"
+        >
+          Send
+        </button>
       </form>
       {showEmojiPicker && (
         <div className="absolute bottom-20 right-8 z-10">
