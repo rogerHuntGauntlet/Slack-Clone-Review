@@ -1,6 +1,16 @@
+'use client';
+
 import { useState, useEffect } from 'react';
-import { Agent } from '@prisma/client';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+
+interface Agent {
+  id: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 interface AgentsListProps {
   onSelectAgent: (agent: Agent) => void;

@@ -39,9 +39,7 @@ const nextConfig = {
     })
 
     return config
-  },
-  // Add WASM to allowed file types
-  webpack5: true,
+  }
 }
 
 module.exports = nextConfig 
