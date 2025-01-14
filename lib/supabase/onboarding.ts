@@ -1,5 +1,5 @@
 import { supabase } from '../supabase'
-import logger from '../logger'
+import { logInfo as log, logError } from '../logger'
 import { updateReaction } from '../supabase'
 
 interface ProfileData {
@@ -22,7 +22,7 @@ const UNIVERSAL_WORKSPACE_ID = '00000000-0000-0000-0000-000000000000'
 
 export async function updateUserProfile(userId: string, data: ProfileData) {
   try {
-    logger.log('🔄 [updateUserProfile] Updating profile for user:', userId)
+    log('🔄 [updateUserProfile] Updating profile for user:', userId)
 
     const { data: profile, error } = await supabase
       .from('user_profiles')
@@ -37,7 +37,7 @@ export async function updateUserProfile(userId: string, data: ProfileData) {
       .single()
 
     if (error) {
-      logger.error('❌ [updateUserProfile] Error:', error)
+      logError('❌ [updateUserProfile] Error:', error)
       throw error
     }
 
@@ -51,21 +51,21 @@ export async function updateUserProfile(userId: string, data: ProfileData) {
       })
 
     if (universalError && universalError.code !== '23505') { // Ignore if already exists
-      logger.error('❌ [updateUserProfile] Error adding to universal workspace:', universalError)
+      logError('❌ [updateUserProfile] Error adding to universal workspace:', universalError)
       throw universalError
     }
 
-    logger.log('✅ [updateUserProfile] Profile updated successfully:', profile)
+    log('✅ [updateUserProfile] Profile updated successfully:', profile)
     return profile
   } catch (error) {
-    logger.error('❌ [updateUserProfile] Error:', error)
+    logError('❌ [updateUserProfile] Error:', error)
     throw error
   }
 }
 
 export async function createOnboardingWorkspace(userId: string, data: WorkspaceData) {
   try {
-    logger.log('🏗️ [createOnboardingWorkspace] Creating workspace:', data.name)
+    log('🏗️ [createOnboardingWorkspace] Creating workspace:', data.name)
 
     // Create the workspace
     const { data: workspace, error: workspaceError } = await supabase
@@ -79,7 +79,7 @@ export async function createOnboardingWorkspace(userId: string, data: WorkspaceD
       .single()
 
     if (workspaceError) {
-      logger.error('❌ [createOnboardingWorkspace] Error creating workspace:', workspaceError)
+      logError('❌ [createOnboardingWorkspace] Error creating workspace:', workspaceError)
       throw workspaceError
     }
 
@@ -93,21 +93,21 @@ export async function createOnboardingWorkspace(userId: string, data: WorkspaceD
       })
 
     if (memberError) {
-      logger.error('❌ [createOnboardingWorkspace] Error adding user as admin:', memberError)
+      logError('❌ [createOnboardingWorkspace] Error adding user as admin:', memberError)
       throw memberError
     }
 
-    logger.log('✅ [createOnboardingWorkspace] Workspace created successfully:', workspace)
+    log('✅ [createOnboardingWorkspace] Workspace created successfully:', workspace)
     return workspace
   } catch (error) {
-    logger.error('❌ [createOnboardingWorkspace] Error:', error)
+    logError('❌ [createOnboardingWorkspace] Error:', error)
     throw error
   }
 }
 
 export async function createOnboardingChannel(workspaceId: string, userId: string, data: ChannelData) {
   try {
-    logger.log('📢 [createOnboardingChannel] Creating channel:', data.name)
+    log('📢 [createOnboardingChannel] Creating channel:', data.name)
 
     // Get AI user
     const { data: aiUser } = await supabase
@@ -117,7 +117,7 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       .single();
 
     if (!aiUser) {
-      logger.error('AI user not found')
+      logError('AI user not found')
       throw new Error('AI user not found');
     }
 
@@ -134,7 +134,7 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       .single()
 
     if (channelError) {
-      logger.error('❌ [createOnboardingChannel] Error creating channel:', channelError)
+      logError('❌ [createOnboardingChannel] Error creating channel:', channelError)
       throw channelError
     }
 
@@ -148,7 +148,7 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       })
 
     if (memberError) {
-      logger.error('❌ [createOnboardingChannel] Error adding user as channel admin:', memberError)
+      logError('❌ [createOnboardingChannel] Error adding user as channel admin:', memberError)
       throw memberError
     }
 
@@ -162,7 +162,7 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       });
 
     if (aiMemberError) {
-      logger.error('Error adding AI to channel:', aiMemberError)
+      logError('Error adding AI to channel:', aiMemberError)
       throw aiMemberError;
     }
 
@@ -180,7 +180,7 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       .single()
 
     if (welcomeError) {
-      logger.error('❌ [createOnboardingChannel] Error creating welcome message:', welcomeError)
+      logError('❌ [createOnboardingChannel] Error creating welcome message:', welcomeError)
       throw welcomeError
     }
 
@@ -198,7 +198,7 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       .single()
 
     if (aiReplyError) {
-      logger.error('Error creating AI reply:', aiReplyError)
+      logError('Error creating AI reply:', aiReplyError)
       throw aiReplyError;
     }
 
@@ -215,10 +215,10 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       await updateReaction(aiReply.id, aiUser.id, emoji);
     }
 
-    logger.log('✅ [createOnboardingChannel] Channel created successfully:', channel)
+    log('✅ [createOnboardingChannel] Channel created successfully:', channel)
     return channel
   } catch (error) {
-    logger.error('❌ [createOnboardingChannel] Error:', error)
+    logError('❌ [createOnboardingChannel] Error:', error)
     throw error
   }
 } 
