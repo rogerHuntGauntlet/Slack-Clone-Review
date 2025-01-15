@@ -1,9 +1,10 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Agent, CreateAgentDTO, UpdateAgentDTO, TrainingFile, FileType } from '../types/agent-types';
 import { mockAgents } from '../data/mock-agents';
-import { processFileForRAG } from './rag-service';
+import { AgentRAGService } from './rag-service';
 
 const supabase = createClientComponentClient();
+const ragService = new AgentRAGService();
 
 interface AgentRecord {
   id: string;
@@ -229,26 +230,7 @@ export async function createAgent(dto: CreateAgentDTO, userId: string): Promise<
           totalFiles: dto.files.length 
         });
         
-        await processFileForRAG({
-          file,
-          agentId: agent.id,
-          namespace: agent.pinecone_namespace,
-          metadata: {
-            fileName: file.name,
-            agentName: dto.name,
-            userId
-          },
-          onProgress: (ragProgress) => {
-            dto.onProgress?.({
-              step: 'rag',
-              subStep: ragProgress.subStep,
-              currentFile: i + 1,
-              totalFiles: dto.files.length,
-              currentChunk: ragProgress.currentChunk,
-              totalChunks: ragProgress.totalChunks
-            });
-          }
-        });
+        await ragService.processAgentFile(agent.id, uploadedFile, await file.text());
       }
     } catch (error: any) {
       dto.onProgress?.({ 
@@ -259,22 +241,8 @@ export async function createAgent(dto: CreateAgentDTO, userId: string): Promise<
     }
   }
 
-  // Return the newly created agent
-  const newAgent = {
-    id: agent.id,
-    name: agent.name,
-    description: agent.description,
-    isActive: agent.is_active,
-    configuration: agent.configuration,
-    userId: agent.user_id,
-    createdAt: new Date(agent.created_at),
-    updatedAt: new Date(agent.updated_at),
-    trainingFiles: [],
-    tags: tags
-  };
-
-  dto.onProgress?.({ step: 'complete' });
-  return newAgent;
+  // Return the created agent with all its relationships
+  return getUserAgents(userId).then(agents => agents.find(a => a.id === agent.id)!);
 }
 
 export async function updateAgent(dto: UpdateAgentDTO): Promise<void> {
