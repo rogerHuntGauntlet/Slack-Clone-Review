@@ -279,16 +279,7 @@ export async function updateAgent(dto: UpdateAgentDTO): Promise<void> {
         const uploadedFile = await uploadTrainingFile(dto.id, file);
         
         // Then process it for RAG
-        await processFileForRAG({
-          file,
-          agentId: dto.id,
-          namespace: agent.pinecone_namespace,
-          metadata: {
-            fileName: file.name,
-            agentName: dto.name || '',
-            userId: dto.userId || ''
-          }
-        });
+        await ragService.processAgentFile(dto.id, uploadedFile, await file.text());
       }
     } catch (error) {
       console.error('Error processing files for RAG:', error);

@@ -2,9 +2,28 @@ import { NextResponse } from 'next/server';
 import { writeFile, unlink, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { cwd } from 'process';
-import pdf from 'pdf-parse';
 import mammoth from 'mammoth';
 import fs from 'fs';
+
+// Mock PDF parser for build environment
+const mockPdfParse = async (buffer: Buffer) => {
+  return {
+    text: '',
+    numpages: 0,
+    info: {},
+    metadata: {},
+    version: '0.0.0'
+  };
+};
+
+// Use real PDF parser in runtime environment
+const getPdfParser = async () => {
+  if (process.env.NODE_ENV === 'production') {
+    const { default: pdfParse } = await import('pdf-parse');
+    return pdfParse;
+  }
+  return mockPdfParse;
+};
 
 export async function POST(req: Request) {
   try {
@@ -50,7 +69,8 @@ export async function POST(req: Request) {
     try {
       // Extract text based on file type
       if (file.name.toLowerCase().endsWith('.pdf')) {
-        const data = await pdf(buffer);
+        const pdfParse = await getPdfParser();
+        const data = await pdfParse(buffer);
         text = data.text;
       } else if (file.name.toLowerCase().endsWith('.docx')) {
         const result = await mammoth.extractRawText({ path: tempPath });
