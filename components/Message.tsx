@@ -252,16 +252,24 @@ const Message: React.FC<MessageProps> = ({
   return (
     <div
       id={`message-${message.id}`}
-      className={`group relative flex items-start space-x-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 p-2 rounded-lg transition-colors ${className}`}
+      className={`flex gap-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 relative group ${className}`}
     >
       <div className="flex-shrink-0">
-        <Image
-          src={message.user?.avatar_url || 'https://via.placeholder.com/40'}
-          alt={message.user?.username || 'User'}
-          width={40}
-          height={40}
-          className="rounded-full"
-        />
+        {message.user?.avatar_url ? (
+          <Image
+            src={message.user.avatar_url}
+            alt={message.user?.username || 'User avatar'}
+            width={40}
+            height={40}
+            className="rounded-full"
+          />
+        ) : (
+          <div className="w-10 h-10 bg-gray-300 dark:bg-gray-700 rounded-full flex items-center justify-center">
+            <span className="text-lg font-medium text-gray-600 dark:text-gray-300">
+              {(message.user?.username || 'U')[0].toUpperCase()}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 min-w-0 break-words">
@@ -287,7 +295,7 @@ const Message: React.FC<MessageProps> = ({
         ) : (
           <div className="mt-1 text-gray-900 dark:text-white whitespace-pre-wrap break-words">
             <div className="mt-1 space-y-2">
-              {parseCodeBlocks(message.content).map((part, index) => (
+              {parseCodeBlocks(message.content || '').map((part, index) => (
                 part.type === 'code' ? (
                   <CodeBlock
                     key={index}
@@ -296,7 +304,15 @@ const Message: React.FC<MessageProps> = ({
                     isEditable={message.user_id === currentUser.id}
                     onUpdate={(newCode) => {
                       // Handle code update logic here
-                      console.log('Code updated:', newCode);
+                      const parts = parseCodeBlocks(message.content || '');
+                      parts[index].content = newCode;
+                      const newContent = parts.map(p => 
+                        p.type === 'code' 
+                          ? `\`\`\`${p.language || 'plaintext'}\n${p.content}\n\`\`\``
+                          : p.content
+                      ).join('');
+                      setEditedContent(newContent);
+                      handleEdit();
                     }}
                   />
                 ) : (

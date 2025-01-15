@@ -1,0 +1,12 @@
+{
+  "name": "agent-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "tsc && node dist/test-rag.js"
+  },
+  "dependencies": {
+    "@types/node": "^22.10.6",
+    "typescript": "^5.7.3"
+  }
+}

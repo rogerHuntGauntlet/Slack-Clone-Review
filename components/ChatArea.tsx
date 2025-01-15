@@ -706,12 +706,22 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         }
       }
 
-      // Scroll to bottom
-      if (!isThreadMessage) {
-        setShouldScrollToBottom(true);
+      // Update messages optimistically
+      if (isThreadMessage) {
+        setThreadMessages(prev => [...prev, message]);
+      } else {
+        setMessages(prev => [...prev, message]);
       }
+
+      // Scroll to bottom
+      if (isThreadMessage) {
+        threadMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+
     } catch (error) {
-      console.error('Detailed error in handleSubmit:', error);
+      console.error('Error sending message:', error);
       toast.error('Failed to send message');
     }
   };

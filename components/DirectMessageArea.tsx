@@ -2,7 +2,7 @@
 
 import { FC, useState, useEffect, useRef } from 'react'
 import { Send, Paperclip, Smile, Search } from 'lucide-react'
-import { getDirectMessages, sendDirectMessage, getUserProfile, supabase } from '../lib/supabase'
+import { getDirectMessages, sendDirectMessage, getUserProfile, supabase, createUserProfile } from '../lib/supabase'
 import EmojiPicker from 'emoji-picker-react'
 import ChatHeader from './ChatHeader'
 import ProfileCard from './ProfileCard'
@@ -40,6 +40,8 @@ interface UserProfile {
   bio?: string;
   employer?: string;
   status: 'online' | 'offline' | 'away';
+  is_agent?: boolean;
+  is_incomplete?: boolean;
 }
 
 const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
@@ -61,6 +63,7 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
   const [isProcessing, setIsProcessing] = useState(false)
   const [streamingResponse, setStreamingResponse] = useState('')
   const [suggestedResponse, setSuggestedResponse] = useState('')
+  const [isNewAgent, setIsNewAgent] = useState(false)
 
   useEffect(() => {
     if (otherUserId === 'bro-user') {
@@ -72,7 +75,6 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
         email: 'bro@example.com',
         status: 'online'
       })
-      // Set empty messages array for Bro user
       setMessages([])
       setError(null)
       return
@@ -107,7 +109,23 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
   const fetchOtherUserProfile = async () => {
     try {
       const profile = await getUserProfile(otherUserId)
-      setOtherUser(profile)
+      if (!profile) {
+        // This is a new agent without a profile
+        setIsNewAgent(true)
+        // Create a temporary profile object for display
+        setOtherUser({
+          id: otherUserId,
+          username: 'New Agent',
+          avatar_url: 'https://www.gravatar.com/avatar/' + otherUserId + '?d=identicon',
+          email: `agent-${otherUserId}@gauntlet.ai`,
+          status: 'online',
+          is_agent: true,
+          is_incomplete: true
+        })
+      } else {
+        setOtherUser(profile)
+        setIsNewAgent(false)
+      }
       setError(null)
     } catch (error) {
       console.error('Error fetching other user profile:', error)
@@ -124,116 +142,49 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
     const form = e.target as HTMLFormElement
     setError(null)
     if (newMessage.trim()) {
-      // Special handling for AI user
-      if (otherUserId === '00000000-0000-0000-0000-000000000001') {
-        try {
-          // Send user message immediately
-          const userMessage = await sendDirectMessage(currentUser.id, otherUserId, newMessage.trim())
-          setMessages([...messages, userMessage])
-          setNewMessage('')
-          // Reset textarea height
-          const textarea = form.querySelector('textarea')
-          if (textarea) textarea.style.height = '40px'
-          setIsProcessing(true)
-          setStreamingResponse('')
-          setIsAITyping(true)
-
-          // Process with Langchain
-          const history = formatMessageHistory(messages)
-          const response = await processDMMessage(
-            newMessage.trim(),
-            history,
-            (token) => {
-              setStreamingResponse(prev => prev + token)
-            }
-          )
-
-          // Send AI response
-          const aiMessage = await sendDirectMessage(otherUserId, currentUser.id, response)
-          setMessages(prev => [...prev, aiMessage])
-          setStreamingResponse('')
-          setIsAITyping(false)
-
-          // Get suggestion for next response
-          const suggestion = await getSuggestedResponse([...history, { role: 'assistant', content: response, timestamp: new Date().toISOString() }])
-          setSuggestedResponse(suggestion)
-        } catch (error) {
-          console.error('Error processing AI message:', error)
-          setError('Failed to process message. Please try again.')
-          setIsAITyping(false)
-        } finally {
-          setIsProcessing(false)
-        }
-        return
-      }
-
-      // Special handling for Bro user
-      if (otherUserId === 'bro-user') {
-        console.log('Bro user detected')
-        const actualMessage = newMessage // Store the original message
-        setNewMessage('') // Clear input immediately
-        
-        // Create a client-side message object for the user's "Yo"
-        const userMessage: DirectMessage = {
-          id: Date.now().toString(),
-          content: 'Bro', // Always send "Yo" regardless of what was typed
-          created_at: new Date().toISOString(),
-          user_id: currentUser.id,
-          receiver_id: 'bro-user',
-          is_direct_message: true,
-          channel: '',
-          sender: {
-            id: currentUser.id,
-            username: currentUser.username || 'You',
-            avatar_url: ''
-          },
-          receiver: {
-            id: 'bro-user',
-            username: 'Bro',
-            avatar_url: 'https://www.feistees.com/images/uploads/2015/05/silicon-valley-bro2bro-app-t-shirt_2.jpg'
-          }
-        }
-        
-        // Add user's message immediately
-        setMessages(messages => [...messages, userMessage])
-
-        // Wait 1 second before showing typing indicator
-        setTimeout(() => {
-          setIsBroTyping(true)
-          
-          // Wait 3 more seconds of typing before sending response
-          setTimeout(() => {
-            setIsBroTyping(false)
-            const broResponse: DirectMessage = {
-              id: Date.now().toString(),
-              content: 'Bro',
-              created_at: new Date().toISOString(),
-              user_id: 'bro-user',
-              receiver_id: currentUser.id,
-              is_direct_message: true,
-              channel: '',
-              sender: {
-                id: 'bro-user',
-                username: 'Bro',
-                avatar_url: 'https://www.feistees.com/images/uploads/2015/05/silicon-valley-bro2bro-app-t-shirt_2.jpg'
-              },
-              receiver: {
-                id: currentUser.id,
-                username: currentUser.username || 'You',
-                avatar_url: ''
-              }
-            }
-            setMessages(messages => [...messages, broResponse])
-          }, 3000)
-        }, 1000)
-        
-        return
-      }
-
       try {
+        // Send the user's message first in all cases
         const sentMessage = await sendDirectMessage(currentUser.id, otherUserId, newMessage.trim())
         setMessages([...messages, sentMessage])
         setNewMessage('')
+        // Reset textarea height
+        const textarea = form.querySelector('textarea')
+        if (textarea) textarea.style.height = '40px'
+
+        // Only generate AI responses for AI Assistant or agents
+        if (otherUserId === '00000000-0000-0000-0000-000000000001' || otherUser?.is_agent) {
+          // Show typing indicator
+          setIsAITyping(true)
+          setStreamingResponse('')
+          setIsProcessing(true)
+
+          try {
+            // Process with Langchain
+            const history = formatMessageHistory(messages)
+            const response = await processDMMessage(
+              newMessage.trim(),
+              history,
+              (token) => {
+                setStreamingResponse(prev => prev + token)
+              }
+            )
+
+            // Send AI/agent response
+            const aiMessage = await sendDirectMessage(otherUserId, currentUser.id, response)
+            setMessages(prev => [...prev, aiMessage])
+            setStreamingResponse('')
+
+            // Get suggestion for next response
+            const suggestion = await getSuggestedResponse([...history, { role: 'assistant', content: response, timestamp: new Date().toISOString() }])
+            setSuggestedResponse(suggestion)
+          } catch (error) {
+            console.error('Error processing AI/agent response:', error)
+            setError('Failed to get response. Please try again.')
+          } finally {
+            setIsAITyping(false)
+            setIsProcessing(false)
+          }
+        }
       } catch (error) {
         console.error('Error sending message:', error)
         setError('Failed to send message. Please try again.')
@@ -352,6 +303,20 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
       )}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
         {otherUser && <ProfileCard user={otherUser} />}
+        
+        {/* Welcome message for new agents */}
+        {isNewAgent && (
+          <div className="bg-blue-50 dark:bg-blue-900 p-4 rounded-lg mb-4">
+            <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-2">
+              Welcome to Your New Agent!
+            </h3>
+            <p className="text-blue-800 dark:text-blue-200">
+              This is your first interaction with this agent. The agent will be set up when you send your first message.
+              {otherUser?.is_incomplete && " Since this agent doesn't have any training data yet, it will behave like the AI Assistant."}
+            </p>
+          </div>
+        )}
+
         {messages.map((message) => (
           <div
             key={message.id}

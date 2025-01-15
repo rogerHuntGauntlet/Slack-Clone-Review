@@ -13,7 +13,8 @@ import {
   testSupabaseConnection,
   testDatabaseTables,
   updateUserProfileId,
-  addUserToUniversalWorkspace
+  addUserToUniversalWorkspace,
+  sendMessage
 } from '../../lib/supabase'
 import Sidebar from '../../components/Sidebar'
 import ChatArea from '../../components/ChatArea'
@@ -38,6 +39,7 @@ import type {
   ProfileModalProps
 } from '@/types/components'
 import Cookies from 'js-cookie';
+import { useSession } from 'next-auth/react'
 
 // Constants
 const MAX_USERS = 40
@@ -111,6 +113,9 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   const [showMobileMenu, setShowMobileMenu] = useState(false)
 
   const supabase = createClientComponentClient()
+  const { data: session } = useSession()
+  const [messages, setMessages] = useState<any[]>([])
+  const [currentDirectMessage, setCurrentDirectMessage] = useState<any>(null)
 
   const fetchChannels = useCallback(async (workspaceId: string) => {
     if (!workspaceId) {
@@ -596,6 +601,40 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
       setActiveChannel('')
     }
     setShowMobileChat(true)
+  }
+
+  const handleSendMessage = async (content: string, codeAttachments: Array<{ language: string; content: string }> = []) => {
+    if (!session?.user?.email || !activeChannel) return;
+
+    try {
+      // Combine message content with code blocks
+      let finalContent = content;
+      if (codeAttachments.length > 0) {
+        // Add a newline if there's existing content
+        if (finalContent.trim()) {
+          finalContent += '\n\n';
+        }
+        // Add each code block
+        finalContent += codeAttachments.map(code => 
+          `\`\`\`${code.language}\n${code.content}\n\`\`\``
+        ).join('\n\n');
+      }
+
+      // Send the message using the supabase sendMessage function
+      const message = await sendMessage(
+        activeChannel,
+        session.user.id,
+        finalContent,
+        null // fileAttachments
+      );
+
+      // Update messages optimistically
+      setMessages(prev => [...prev, message]);
+
+    } catch (error) {
+      logError('Error sending message', { error: error instanceof Error ? error.message : String(error) })
+      setError('Failed to send message. Please try again.')
+    }
   }
 
   if (loading) {

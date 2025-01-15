@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { User, ChevronDown, ChevronRight } from 'lucide-react'
-import { supabase, getWorkspaceUsers } from '../lib/supabase'
+import { supabase, getWorkspaceUsers, createUserProfile } from '../lib/supabase'
 import Link from 'next/link'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 
 interface DMUser {
   id: string;
@@ -11,6 +12,9 @@ interface DMUser {
   email: string;
   avatar_url: string;
   status: 'online' | 'offline' | 'away';
+  pinecone_namespace?: string; // Added for agent-specific RAG
+  is_agent?: boolean; // Flag to identify agents
+  is_incomplete?: boolean; // Flag to identify incomplete agents
 }
 
 interface Section {
@@ -21,12 +25,24 @@ interface Section {
 
 interface DMListProps {
   workspaceId: string;
-  onSelectDMAction: (userId: string, options?: { isBro?: boolean; startTyping?: boolean }) => void;
+  onSelectDMAction: (userId: string, options?: { isBro?: boolean; startTyping?: boolean; isAgent?: boolean; agentNamespace?: string }) => void;
   activeUserId: string | null;
   currentUserId: string;
   isCollapsed?: boolean;
   onCollapsedChange?: (isCollapsed: boolean) => void;
   isMobile?: boolean;
+}
+
+interface AgentRecord {
+  id: string;
+  name: string;
+  description: string;
+  is_active: boolean;
+  pinecone_namespace: string;
+  created_at: string;
+  updated_at: string;
+  training_files?: { type: string; url: string; name: string; size: number; }[];
+  agent_files?: { id: string; type: string; url: string; name: string; size: number; }[];
 }
 
 export default function CollapsibleDMList({ 
@@ -45,6 +61,7 @@ export default function CollapsibleDMList({
   ])
   const [currentUser, setCurrentUser] = useState<DMUser | null>(null)
   const isCollapsed = controlledIsCollapsed ?? internalIsCollapsed
+  const supabase = createClientComponentClient()
   
   const handleCollapse = () => {
     setInternalIsCollapsed(!isCollapsed)
@@ -88,56 +105,97 @@ export default function CollapsibleDMList({
   }, [])
 
   const fetchUsers = async () => {
-    // Get workspace users (these should only be real users, not system users)
-    const workspaceUsers = await getWorkspaceUsers(workspaceId)
-    
-    // Create special Bro user with custom functionality
-    const broUser: DMUser = {
-      id: 'bro-user',  // Special ID for Bro
-      username: 'Bro',
-      email: 'bro@example.com',
-      avatar_url: 'https://www.feistees.com/images/uploads/2015/05/silicon-valley-bro2bro-app-t-shirt_2.jpg',
-      status: 'online'
-    }
-
-    // Filter out Bro from workspace users before setting current user
-    const realWorkspaceUsers = workspaceUsers.filter((u: DMUser) => u.id !== 'bro-user')
-    
-    // Set current user (only from real workspace users)
-    const current = realWorkspaceUsers.find((u: DMUser) => u.id === currentUserId)
-    if (current) {
-      setCurrentUser(current)
-    }
-
-    // Get AI Assistant from workspace users
-    const aiAssistant = workspaceUsers.find((u: DMUser) => 
-      u.id === '00000000-0000-0000-0000-000000000001'
-    )
-
-    // Filter out system users, Bro, and current user from contacts
-    const contacts = realWorkspaceUsers.filter((u: DMUser) => 
-      u.id !== currentUserId && 
-      u.id !== '00000000-0000-0000-0000-000000000001'
-    )
-
-    // Set sections with completely separate user lists
-    setSections([
-      { 
-        title: 'System Users', 
-        users: aiAssistant ? [aiAssistant, broUser] : [broUser],
-        isCollapsed: false 
-      },
-      { 
-        title: 'My Agents',
-        users: [],
-        isCollapsed: false
-      },
-      {
-        title: 'Contacts',
-        users: contacts,
-        isCollapsed: false
+    try {
+      // Get workspace users (these should only be real users, not system users)
+      const workspaceUsers = await getWorkspaceUsers(workspaceId)
+      
+      // Create special Bro user with custom functionality
+      const broUser: DMUser = {
+        id: 'bro-user',
+        username: 'Bro',
+        email: 'bro@example.com',
+        avatar_url: 'https://www.feistees.com/images/uploads/2015/05/silicon-valley-bro2bro-app-t-shirt_2.jpg',
+        status: 'online'
       }
-    ])
+
+      // Get AI Assistant
+      const aiAssistant = workspaceUsers.find((u: DMUser) => 
+        u.id === '00000000-0000-0000-0000-000000000001'
+      )
+
+      // Filter out system users, Bro, and current user from contacts
+      const contacts = workspaceUsers.filter((u: DMUser) => 
+        u.id !== currentUserId && 
+        u.id !== '00000000-0000-0000-0000-000000000001'
+      )
+
+      // Fetch user's agents with their training files
+      const { data: agents, error: agentsError } = await supabase
+        .from('agents')
+        .select(`
+          id,
+          name,
+          description,
+          is_active,
+          pinecone_namespace,
+          created_at,
+          updated_at,
+          agent_files (
+            id,
+            type,
+            url,
+            name,
+            size
+          )
+        `)
+        .eq('user_id', currentUserId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+
+      if (agentsError) {
+        console.error('Error fetching agents:', agentsError)
+        throw agentsError
+      }
+
+      // Transform agents into DMUser format
+      const userAgents: DMUser[] = (agents as AgentRecord[]).map(agent => ({
+        id: agent.id,
+        username: agent.name,
+        email: `agent-${agent.id}@gauntlet.ai`,
+        avatar_url: 'https://www.gravatar.com/avatar/' + agent.id + '?d=identicon',
+        status: 'online',
+        pinecone_namespace: agent.pinecone_namespace,
+        is_agent: true,
+        is_incomplete: !agent.agent_files || agent.agent_files.length === 0
+      }))
+
+      // Set current user from real workspace users
+      const current = workspaceUsers.find((u: DMUser) => u.id === currentUserId)
+      if (current) {
+        setCurrentUser(current)
+      }
+
+      // Set sections with completely separate user lists
+      setSections([
+        { 
+          title: 'System Users', 
+          users: aiAssistant ? [aiAssistant, broUser] : [broUser],
+          isCollapsed: false 
+        },
+        { 
+          title: 'My Agents',
+          users: userAgents,
+          isCollapsed: false
+        },
+        {
+          title: 'Contacts',
+          users: contacts,
+          isCollapsed: false
+        }
+      ])
+    } catch (error) {
+      console.error('Error in fetchUsers:', error)
+    }
   }
 
   const UserAvatar = ({ user }: { user: DMUser }) => {
@@ -150,6 +208,25 @@ export default function CollapsibleDMList({
             alt="Bro"
             className="w-8 h-8 rounded-full border-2 border-blue-500"
           />
+          <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-gray-800 bg-green-500"></span>
+        </div>
+      )
+    }
+
+    // Special handling for agent avatars
+    if (user.is_agent) {
+      return (
+        <div className="relative flex-shrink-0">
+          <div className={`w-8 h-8 rounded-full ${user.is_incomplete ? 'bg-gradient-to-r from-yellow-500 to-orange-500' : 'bg-gradient-to-r from-purple-500 to-pink-500'} flex items-center justify-center`}>
+            <span className="text-white text-sm font-bold">
+              {user.username.charAt(0).toUpperCase()}
+            </span>
+          </div>
+          {user.is_incomplete && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-yellow-500 border-2 border-gray-800 flex items-center justify-center">
+              <span className="text-gray-800 text-xs font-bold">!</span>
+            </span>
+          )}
           <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-gray-800 bg-green-500"></span>
         </div>
       )
@@ -180,11 +257,20 @@ export default function CollapsibleDMList({
     )
   }
 
-  const handleUserClick = (userId: string) => {
+  const handleUserClick = (userId: string, user: DMUser) => {
     // Special handling for Bro
     if (userId === 'bro-user') {
-      // Call the action with special Bro handling flag and start typing
       onSelectDMAction(userId, { isBro: true, startTyping: true })
+      return
+    }
+
+    // Special handling for agents
+    if (user.is_agent) {
+      onSelectDMAction(userId, { 
+        isAgent: true,
+        agentNamespace: user.is_incomplete ? undefined : user.pinecone_namespace,
+        startTyping: true 
+      })
       return
     }
 
@@ -196,7 +282,7 @@ export default function CollapsibleDMList({
     return (
       <li key={user.id}>
         <button
-          onClick={() => handleUserClick(user.id)}
+          onClick={() => handleUserClick(user.id, user)}
           className={`flex items-center w-full p-2 rounded-lg transition-all duration-200 ${
             activeUserId === user.id ? 'bg-gray-700' : 'hover:bg-gray-700'
           } ${isCollapsed ? 'justify-center' : 'justify-start'}`}

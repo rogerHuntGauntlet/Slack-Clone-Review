@@ -1,4 +1,6 @@
 import '../styles/globals.css'
+import { HealthReminder } from './components/HealthReminder'
+import { Providers } from './providers'
 
 export default function RootLayout({
   children,
@@ -7,7 +9,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <Providers>
+          {children}
+          <HealthReminder />
+        </Providers>
+      </body>
     </html>
   )
 }
