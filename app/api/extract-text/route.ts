@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { writeFile, unlink } from 'fs/promises';
+import { writeFile, unlink, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { cwd } from 'process';
 import pdf from 'pdf-parse';
@@ -18,10 +18,14 @@ export async function POST(req: Request) {
       );
     }
 
+    // Create tmp directory if it doesn't exist
+    const tmpDir = join(cwd(), 'tmp');
+    await mkdir(tmpDir, { recursive: true });
+
     // Save the file temporarily
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const tempPath = join(cwd(), 'tmp', `${Date.now()}-${file.name}`);
+    const tempPath = join(tmpDir, `${Date.now()}-${file.name}`);
     await writeFile(tempPath, buffer);
 
     let text = '';

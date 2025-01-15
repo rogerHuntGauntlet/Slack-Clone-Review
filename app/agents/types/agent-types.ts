@@ -32,6 +32,7 @@ export interface CreateAgentDTO {
   files?: File[];  // Browser File objects for upload
   tags: string[];
   onProgress?: (progress: CreationProgress) => void;
+  templateId?: string;  // ID of the template to create from
 }
 
 export interface UpdateAgentDTO {

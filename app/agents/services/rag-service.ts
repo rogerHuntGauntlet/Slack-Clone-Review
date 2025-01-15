@@ -230,7 +230,9 @@ interface ProcessFileForRAGParams {
   onProgress?: (progress: RAGProgress) => void;
 }
 
-export async function processFileForRAG({
+export { processFileForRAG };
+
+async function processFileForRAG({
   file,
   agentId,
   namespace,
