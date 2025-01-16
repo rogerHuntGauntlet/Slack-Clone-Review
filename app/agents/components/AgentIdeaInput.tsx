@@ -1,5 +1,50 @@
 import { useState, useRef, useEffect } from 'react';
-import { ExclamationCircleIcon, MicrophoneIcon, VideoCameraIcon, PaperClipIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { ExclamationCircleIcon, MicrophoneIcon, VideoCameraIcon, PaperClipIcon, SparklesIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { AgentChatService } from '../services/agent-chat-service';
+import { AnimatedAvatar } from '@/components/AnimatedAvatar';
+import { VoiceService } from '@/services/voice-service';
+
+interface SpeechRecognitionBase extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onerror: (event: SpeechRecognitionErrorEvent) => void;
+  onend?: ((this: SpeechRecognition, ev: Event) => any) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface SpeechRecognition extends SpeechRecognitionBase {
+  lang: string;
+}
+
+interface WebkitSpeechRecognition extends SpeechRecognitionBase {
+  lang: string;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => WebkitSpeechRecognition;
+  }
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  error: string;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: {
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+      isFinal: boolean;
+    };
+    length: number;
+  };
+}
 
 interface Message {
   id: string;
@@ -18,6 +63,7 @@ interface AgentIdeaInputProps {
   evaluation?: string;
   onError?: (error: string) => void;
   onCreateAgent?: (chatLog: string) => void;
+  agentId?: string;
 }
 
 export function AgentIdeaInput({ 
@@ -28,7 +74,8 @@ export function AgentIdeaInput({
   error: externalError, 
   evaluation,
   onError,
-  onCreateAgent
+  onCreateAgent,
+  agentId = 'default-agent'
 }: AgentIdeaInputProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string | undefined>(externalError);
@@ -41,6 +88,41 @@ export function AgentIdeaInput({
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const isFirstMessage = messages.length === 0;
   const [isGeneratingMetadata, setIsGeneratingMetadata] = useState(false);
+  const [isVoiceChatActive, setIsVoiceChatActive] = useState(false);
+  const [transcription, setTranscription] = useState('');
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const chatServiceRef = useRef<AgentChatService | null>(null);
+  const speechRecognitionRef = useRef<SpeechRecognition | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isPlayingVoice, setIsPlayingVoice] = useState(false);
+  const voiceServiceRef = useRef<VoiceService | null>(null);
+  const [isAvatarVisible, setIsAvatarVisible] = useState(true);
+  const [avatarEmotion, setAvatarEmotion] = useState<'neutral' | 'happy' | 'thinking' | 'surprised'>('neutral');
+  const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false);
+  const [voiceChatStatus, setVoiceChatStatus] = useState<'inactive' | 'listening' | 'processing' | 'submitting'>('inactive');
+  const [isConversationMode, setIsConversationMode] = useState(false);
+
+  useEffect(() => {
+    if (agentId) {
+      chatServiceRef.current = new AgentChatService(agentId);
+    }
+  }, [agentId]);
+
+  // When we get the first evaluation, switch to conversation mode
+  useEffect(() => {
+    if (evaluation && !isConversationMode && messages.length === 0) {
+      setIsConversationMode(true);
+      if (chatServiceRef.current) {
+        chatServiceRef.current.setRagMode(false);
+      }
+      // Add the initial exchange to messages
+      setMessages([
+        { id: Date.now().toString(), role: 'user', content: value, status: 'done' },
+        { id: (Date.now() + 1).toString(), role: 'assistant', content: evaluation, status: 'done' }
+      ]);
+    }
+  }, [evaluation, isConversationMode, value]);
 
   const startRecording = async (isVideo: boolean = false) => {
     try {
@@ -194,50 +276,83 @@ export function AgentIdeaInput({
     if (!value.trim() || isEvaluating) return;
 
     // Add user message
+    const userMessageId = Date.now().toString();
     setMessages(prev => [...prev, {
-      id: Date.now().toString(),
+      id: userMessageId,
       role: 'user',
-      content: value
+      content: value,
+      status: 'done'
     }]);
 
-    // Add initial searching status
-    setMessages(prev => [...prev, {
-      id: 'thinking',
-      role: 'assistant',
-      content: '',
-      status: 'searching',
-      statusMessage: 'Searching knowledge base for relevant information...'
-    }]);
+    if (!isConversationMode) {
+      // Initial RAG evaluation
+      setMessages(prev => [...prev, {
+        id: 'thinking',
+        role: 'assistant',
+        content: '',
+        status: 'searching',
+        statusMessage: 'Searching knowledge base for relevant information...'
+      }]);
 
-    // After a short delay, show analyzing status
-    setTimeout(() => {
-      setMessages(prev => {
-        const filtered = prev.filter(m => m.id !== 'thinking');
-        return [...filtered, {
-          id: 'thinking',
-          role: 'assistant',
-          content: '',
-          status: 'analyzing',
-          statusMessage: 'Analyzing context and formulating expert evaluation...'
-        }];
-      });
-    }, 3000);
+      setTimeout(() => {
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== 'thinking');
+          return [...filtered, {
+            id: 'thinking',
+            role: 'assistant',
+            content: '',
+            status: 'analyzing',
+            statusMessage: 'Analyzing context and formulating expert evaluation...'
+          }];
+        });
+      }, 3000);
 
-    // After another delay, show writing status
-    setTimeout(() => {
-      setMessages(prev => {
-        const filtered = prev.filter(m => m.id !== 'thinking');
-        return [...filtered, {
-          id: 'thinking',
-          role: 'assistant',
-          content: '',
-          status: 'writing',
-          statusMessage: 'Writing comprehensive evaluation and recommendations...'
-        }];
-      });
-    }, 6000);
+      setTimeout(() => {
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== 'thinking');
+          return [...filtered, {
+            id: 'thinking',
+            role: 'assistant',
+            content: '',
+            status: 'writing',
+            statusMessage: 'Writing comprehensive evaluation and recommendations...'
+          }];
+        });
+      }, 6000);
 
-    onEvaluate();
+      onEvaluate();
+    } else {
+      // Conversation mode - simpler loading state
+      setMessages(prev => [...prev, {
+        id: 'thinking',
+        role: 'assistant',
+        content: '',
+        status: 'writing',
+        statusMessage: 'Thinking...'
+      }]);
+
+      // Use chat service directly
+      if (chatServiceRef.current) {
+        chatServiceRef.current.chat(value).then(response => {
+          setMessages(prev => {
+            const filtered = prev.filter(m => m.id !== 'thinking');
+            return [...filtered, {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: response,
+              status: 'done'
+            }];
+          });
+        }).catch(err => {
+          console.error('Chat error:', err);
+          setError('Failed to get response. Please try again.');
+          onError?.('Failed to get response. Please try again.');
+          // Remove thinking message
+          setMessages(prev => prev.filter(m => m.id !== 'thinking'));
+        });
+      }
+    }
+    
     onChange(''); // Clear the input after submission
   };
 
@@ -316,8 +431,308 @@ ${chatLog}`;
     }
   };
 
+  const startVoiceChat = async () => {
+    if (!agentId || isEvaluating) return;
+
+    setIsVoiceChatActive(true);
+    setVoiceChatStatus('listening');
+    setTranscription('');
+
+    try {
+      const SpeechRecognitionConstructor = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognitionConstructor) {
+        throw new Error('Speech recognition not supported');
+      }
+
+      const recognition = new SpeechRecognitionConstructor();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      
+      speechRecognitionRef.current = recognition;
+
+      let lastSpeechTime = Date.now();
+      let silenceTimer: NodeJS.Timeout | null = null;
+      let finalTranscript = '';
+
+      recognition.onresult = (event: any) => {
+        lastSpeechTime = Date.now();
+        
+        if (silenceTimer) {
+          clearTimeout(silenceTimer);
+        }
+
+        const transcript = Array.from(event.results)
+          .map((result: any) => result[0].transcript)
+          .join(' ');
+
+        if (event.results[event.results.length - 1].isFinal) {
+          finalTranscript = transcript;
+        }
+        
+        setTranscription(transcript);
+
+        silenceTimer = setTimeout(() => {
+          if (finalTranscript.trim()) {
+            setVoiceChatStatus('processing');
+            recognition.stop();
+            onChange(finalTranscript);
+            
+            // Add a small delay before countdown to show "Processing..." state
+            setTimeout(() => {
+              setVoiceChatStatus('submitting');
+              setCountdown(3);
+              
+              let count = 3;
+              const countdownInterval = setInterval(() => {
+                count--;
+                setCountdown(count);
+                if (count === 0) {
+                  clearInterval(countdownInterval);
+                  const submitButton = document.querySelector('button[type="submit"]') as HTMLButtonElement;
+                  if (submitButton) {
+                    submitButton.click();
+                  } else {
+                    handleSubmit();
+                  }
+                  setCountdown(null);
+                  setVoiceChatStatus('inactive');
+                }
+              }, 1000);
+            }, 500);
+          }
+        }, 2000); // Reduced silence time to 2 seconds for better responsiveness
+      };
+
+      recognition.addEventListener('end', () => {
+        if (silenceTimer) {
+          clearTimeout(silenceTimer);
+        }
+        setIsVoiceChatActive(false);
+        if (voiceChatStatus === 'listening') {
+          setVoiceChatStatus('inactive');
+        }
+      });
+
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.error('Speech recognition error:', event.error);
+        if (silenceTimer) {
+          clearTimeout(silenceTimer);
+        }
+        setIsVoiceChatActive(false);
+        setVoiceChatStatus('inactive');
+        setTranscription('');
+        
+        // Show error message to user
+        const errorMessage = event.error === 'not-allowed' 
+          ? 'Please allow microphone access to use voice chat.'
+          : 'Voice chat error. Please try again.';
+        setError(errorMessage);
+        onError?.(errorMessage);
+      };
+
+      recognition.start();
+    } catch (err) {
+      console.error('Failed to start voice chat:', err);
+      setIsVoiceChatActive(false);
+      setVoiceChatStatus('inactive');
+      setError('Failed to start voice chat. Please try again.');
+    }
+  };
+
+  const stopVoiceChat = () => {
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.stop();
+    }
+    setIsVoiceChatActive(false);
+    setVoiceChatStatus('inactive');
+    setTranscription('');
+    setCountdown(null);
+  };
+
+  const handleVoiceChatToggle = () => {
+    if (isVoiceChatActive) {
+      stopVoiceChat();
+    } else {
+      startVoiceChat();
+    }
+  };
+
+  // Show transcription in the textarea
+  useEffect(() => {
+    if (transcription) {
+      onChange(transcription);
+    }
+  }, [transcription]);
+
+  useEffect(() => {
+    if (countdown !== null && countdown > 0) {
+      countdownIntervalRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev === null || prev <= 1) {
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current);
+            }
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, [countdown]);
+
+  // Initialize voice service
+  useEffect(() => {
+    const apiKey = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY;
+    if (apiKey) {
+      voiceServiceRef.current = VoiceService.getInstance(apiKey);
+    } else {
+      console.error('ElevenLabs API key not found in environment variables');
+    }
+  }, []);
+
+  const speakResponse = async (text: string) => {
+    if (!voiceServiceRef.current) {
+      console.error('Voice service not initialized. Please check your ElevenLabs API key.');
+      return;
+    }
+
+    try {
+      setIsPlayingVoice(true);
+      setIsAvatarSpeaking(true);
+      setAvatarEmotion('neutral');
+      
+      // Simplify the text first
+      const response = await fetch('/api/agents/simplify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content: "You are an AI that simplifies technical responses into natural, conversational language. Keep the key points but make it sound more human and brief (2-3 sentences max)."
+            },
+            {
+              role: "user",
+              content: `Please simplify this response into natural speech:\n\n${text}`
+            }
+          ]
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to simplify response');
+      }
+
+      const { text: simplifiedText } = await response.json();
+      
+      // Split text into sentences for more natural delivery
+      const sentences = simplifiedText.match(/[^.!?]+[.!?]+/g) || [simplifiedText];
+      
+      for (const sentence of sentences) {
+        try {
+          const audioData = await voiceServiceRef.current.synthesizeSpeech(sentence.trim());
+          await voiceServiceRef.current.playAudio(audioData);
+          
+          // Small pause between sentences
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (error) {
+          console.error('Error processing sentence:', sentence, error);
+        }
+      }
+
+      setAvatarEmotion('happy');
+    } catch (error) {
+      console.error('Error playing voice:', error);
+      setAvatarEmotion('surprised');
+    } finally {
+      setIsPlayingVoice(false);
+      setIsAvatarSpeaking(false);
+    }
+  };
+
+  // Use ElevenLabs voice when evaluation changes
+  useEffect(() => {
+    if (evaluation && !isPlayingVoice) {
+      speakResponse(evaluation);
+    }
+  }, [evaluation]);
+
+  // Toggle ElevenLabs voice
+  const toggleSpeech = async () => {
+    if (isPlayingVoice) {
+      setIsPlayingVoice(false);
+      setIsAvatarSpeaking(false);
+    } else if (evaluation) {
+      speakResponse(evaluation);
+    }
+  };
+
+  // Stop speaking when starting voice input
+  useEffect(() => {
+    if (isVoiceChatActive) {
+      setIsPlayingVoice(false);
+      setIsAvatarSpeaking(false);
+    }
+  }, [isVoiceChatActive]);
+
+  // Update avatar state based on message status
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.role === 'assistant') {
+      if (lastMessage.status === 'searching') {
+        setAvatarEmotion('thinking');
+        setIsAvatarSpeaking(false);
+      } else if (lastMessage.status === 'analyzing') {
+        setAvatarEmotion('thinking');
+        setIsAvatarSpeaking(false);
+      } else if (lastMessage.status === 'writing') {
+        setAvatarEmotion('neutral');
+        setIsAvatarSpeaking(true);
+      } else if (lastMessage.status === 'done') {
+        setAvatarEmotion('happy');
+        setIsAvatarSpeaking(false);
+      }
+    }
+  }, [messages]);
+
   return (
-    <div className="flex flex-col h-[600px]">
+    <div className="flex flex-col h-[600px] relative">
+      {/* Avatar Overlay */}
+      {isAvatarVisible && (
+        <div className="absolute top-4 right-4 w-[300px] z-50">
+          <div className="relative">
+            <button
+              onClick={() => setIsAvatarVisible(false)}
+              className="absolute top-2 right-2 p-1 rounded-full bg-gray-800/50 hover:bg-gray-700/50 text-white z-10"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+            <AnimatedAvatar 
+              speaking={isAvatarSpeaking} 
+              emotion={avatarEmotion}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Toggle Avatar Button (when hidden) */}
+      {!isAvatarVisible && (
+        <button
+          onClick={() => setIsAvatarVisible(true)}
+          className="absolute top-4 right-4 p-2 rounded-full bg-purple-600 hover:bg-purple-500 text-white z-50"
+          title="Show AI Avatar"
+        >
+          <VideoCameraIcon className="h-6 w-6" />
+        </button>
+      )}
+
       {/* Messages */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-4">
         {messages.map(message => (
@@ -332,18 +747,7 @@ ${chatLog}`;
                   : 'bg-gray-700 text-gray-200'
               }`}
             >
-              {isLoading(message.status) ? (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100" />
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200" />
-                  </div>
-                  {message.statusMessage && (
-                    <p className="text-sm text-gray-400">{message.statusMessage}</p>
-                  )}
-                </div>
-              ) : (
+              <div className="flex items-start justify-between gap-2">
                 <div className="prose prose-invert prose-sm max-w-none">
                   {message.content.split('\n').map((line, i) => {
                     if (line.startsWith('###')) {
@@ -357,10 +761,65 @@ ${chatLog}`;
                     }
                   })}
                 </div>
+                {message.role === 'assistant' && message.status === 'done' && (
+                  <button
+                    onClick={toggleSpeech}
+                    className={`p-1.5 rounded-full ${
+                      isPlayingVoice 
+                        ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30' 
+                        : 'bg-purple-500/20 text-purple-500 hover:bg-purple-500/30'
+                    }`}
+                    title={isPlayingVoice ? 'Stop speaking' : 'Speak response'}
+                  >
+                    {isPlayingVoice ? (
+                      <XMarkIcon className="h-4 w-4" />
+                    ) : (
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                      </svg>
+                    )}
+                  </button>
+                )}
+              </div>
+              {isLoading(message.status) && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100" />
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200" />
+                  </div>
+                  {message.statusMessage && (
+                    <p className="text-sm text-gray-400">{message.statusMessage}</p>
+                  )}
+                </div>
               )}
             </div>
           </div>
         ))}
+        
+        {/* Show live transcription and countdown when voice chat is active */}
+        {isVoiceChatActive && (transcription || countdown) && (
+          <div className="flex justify-end">
+            <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-700 text-gray-300">
+              <div className="flex items-center gap-2">
+                {voiceChatStatus === 'listening' && (
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                )}
+                {voiceChatStatus === 'processing' && (
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+                )}
+                <div>{transcription}</div>
+              </div>
+              {voiceChatStatus === 'submitting' && countdown !== null && (
+                <div className="mt-2 flex items-center justify-center">
+                  <div className="text-2xl font-bold text-purple-400 animate-pulse">
+                    Sending in {countdown}...
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Video Preview */}
@@ -384,13 +843,13 @@ ${chatLog}`;
       {/* Input Area */}
       <div className="p-6 border-t border-gray-700">
         <div className="flex flex-col gap-3">
-          {/* Create Agent Button - only show if we have an evaluation */}
-          {messages.some(m => m.role === 'assistant' && m.status === 'done') && (
-            <div className="px-6 pt-4">
+          {/* Create Agent Button - only show in RAG mode with evaluation */}
+          {!isConversationMode && messages.some(m => m.role === 'assistant' && m.status === 'done') && (
+            <div className="px-6 pt-4 flex gap-2">
               <button
                 onClick={handleCreateAgent}
                 disabled={isGeneratingMetadata}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2 ${
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 ${
                   isGeneratingMetadata 
                     ? 'bg-gray-600 cursor-not-allowed' 
                     : 'bg-indigo-600 hover:bg-indigo-700'
@@ -407,6 +866,21 @@ ${chatLog}`;
                     Create my agent
                   </>
                 )}
+              </button>
+              <button
+                onClick={() => {
+                  onChange('');
+                  setMessages([]);
+                  setIsConversationMode(false);
+                  if (chatServiceRef.current) {
+                    chatServiceRef.current.setRagMode(true);
+                  }
+                }}
+                className="px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg flex items-center gap-2"
+                title="Clear conversation and start over"
+              >
+                <XMarkIcon className="h-5 w-5" />
+                Clear All
               </button>
             </div>
           )}
@@ -427,11 +901,25 @@ ${chatLog}`;
           <div className="flex items-center gap-2">
             <div className="flex gap-2">
               <button
-                onClick={isRecording ? handleStopRecording : handleStartAudioRecording}
-                className={`p-2 rounded-full ${
-                  isRecording ? 'bg-red-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                onClick={handleVoiceChatToggle}
+                className={`p-2 rounded-full transition-all duration-200 ${
+                  voiceChatStatus === 'inactive'
+                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    : voiceChatStatus === 'listening'
+                    ? 'bg-red-500 text-white animate-pulse'
+                    : voiceChatStatus === 'processing'
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-purple-500 text-white'
                 }`}
-                title={isRecording ? 'Stop recording' : 'Start audio recording'}
+                title={
+                  voiceChatStatus === 'inactive'
+                    ? 'Start voice chat'
+                    : voiceChatStatus === 'listening'
+                    ? 'Stop recording'
+                    : voiceChatStatus === 'processing'
+                    ? 'Processing...'
+                    : 'Submitting...'
+                }
               >
                 <MicrophoneIcon className="h-5 w-5" />
               </button>
@@ -453,10 +941,21 @@ ${chatLog}`;
               >
                 <PaperClipIcon className="h-5 w-5" />
               </button>
+
+              {value.trim() && (
+                <button
+                  onClick={() => onChange('')}
+                  className="p-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                  title="Clear input"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              )}
             </div>
 
             <button
               onClick={handleSubmit}
+              type="submit"
               disabled={isEvaluating || !value.trim()}
               className={`ml-auto px-4 py-2 rounded-lg flex items-center gap-2 ${
                 isEvaluating || !value.trim()

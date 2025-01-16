@@ -54,7 +54,7 @@ export default function Platform() {
   useEffect(() => {
     // Set up logger only once when component mounts
     const originalLog = addLog;
-    
+
     // Initial logs
     logInfo('Platform mounting')
 
@@ -84,7 +84,7 @@ function PlatformWithParams({ addLog }: { addLog: (message: string) => void }) {
 
 function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: string) => void, initialWorkspaceId: string | null }) {
   console.log('Platform: PlatformContent mounting with initialWorkspaceId:', initialWorkspaceId);
-  
+
   const router = useRouter()
   const [user, setUser] = useState<{ id: string; email: string; username?: string } | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState('')
@@ -106,7 +106,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showSearchResults, setShowSearchResults] = useState(false)
   const [isDMListCollapsed, setIsDMListCollapsed] = useState(false)
-  
+
   // Add mobile-specific states
   const isMobile = useMediaQuery('(max-width: 768px)')
   const [showMobileChat, setShowMobileChat] = useState(false)
@@ -147,7 +147,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
 
   const handleWorkspaceSelect = useCallback(async (workspaceId: string) => {
     console.log('Platform: handleWorkspaceSelect called with:', workspaceId);
-    
+
     if (!workspaceId) {
       logError('No workspace ID provided', { action: 'handleWorkspaceSelect' });
       return;
@@ -155,10 +155,10 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
 
     // Set cookie when workspace is selected
     Cookies.set('lastWorkspaceId', workspaceId, { expires: 7 }); // Expires in 7 days
-    
+
     setActiveWorkspace(workspaceId);
     console.log('Platform: Setting active workspace to:', workspaceId);
-    
+
     if (!user?.id) {
       console.log('Platform: No user ID available');
       logError('No user ID available', { action: 'handleWorkspaceSelect' })
@@ -192,7 +192,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   useEffect(() => {
     console.log('Platform: Initial workspace selection effect running');
     console.log('Platform: Current state:', { loading, initialWorkspaceId, user });
-    
+
     if (!loading && initialWorkspaceId && user) {
       console.log('Platform: Calling handleWorkspaceSelect with initialWorkspaceId:', initialWorkspaceId);
       handleWorkspaceSelect(initialWorkspaceId);
@@ -518,10 +518,10 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     try {
       // Clear workspace cookie on logout
       Cookies.remove('lastWorkspaceId');
-      
+
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      
+
       router.push('/auth');
     } catch (error) {
       console.error('Error logging out:', error);
@@ -542,7 +542,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     if (!loading && user) {
       const lastWorkspaceId = Cookies.get('lastWorkspaceId');
       console.log('Platform: Found lastWorkspaceId in cookie:', lastWorkspaceId);
-      
+
       if (lastWorkspaceId) {
         console.log('Platform: Auto-selecting workspace from cookie:', lastWorkspaceId);
         handleWorkspaceSelect(lastWorkspaceId);
@@ -615,7 +615,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
           finalContent += '\n\n';
         }
         // Add each code block
-        finalContent += codeAttachments.map(code => 
+        finalContent += codeAttachments.map(code =>
           `\`\`\`${code.language}\n${code.content}\n\`\`\``
         ).join('\n\n');
       }
@@ -633,7 +633,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
 
     } catch (error) {
       logError('Error sending message', { error: error instanceof Error ? error.message : String(error) })
-      setError('Failed to send message. Please try again.')
+      setError('This service is currently experiencing high traffic or still in production. Please try again later.')
     }
   }
 
@@ -739,7 +739,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         {showMobileChat && (
           <div className="h-[calc(100vh-64px)]">
             <div className="flex items-center p-2 border-b dark:border-gray-700">
-              <button 
+              <button
                 onClick={() => setShowMobileChat(false)}
                 className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >
@@ -751,7 +751,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
                 {activeChannel ? `#${activeChannel}` : 'Direct Message'}
               </span>
             </div>
-            
+
             {activeChannel && (
               <ChatArea
                 activeWorkspace={activeWorkspace}

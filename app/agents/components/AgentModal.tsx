@@ -60,6 +60,25 @@ export function AgentModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!isOpen) {
+      setName(agent?.name || '');
+      setDescription(agent?.description || '');
+      setSelectedFiles({
+        text: preloadedFiles.filter(f => f.type === 'text/plain'),
+        image: [],
+        video: [],
+        audio: []
+      });
+      setSelectedFileType(null);
+      setSelectedFile(null);
+      setTags(agent?.tags || []);
+      setSuggestedTags([]);
+      setProgress(null);
+      setIsSubmitting(false);
+    }
+  }, [isOpen, agent, preloadedFiles]);
+
+  useEffect(() => {
     const timer = setTimeout(async () => {
       if (description.trim().length > 20) {
         setIsGeneratingTags(true);
@@ -131,6 +150,21 @@ export function AgentModal({
   const handleFileSelect = (type: FileType, file: File) => {
     setSelectedFileType(type);
     setSelectedFile(file);
+  };
+
+  const handleClearForm = () => {
+    setName('');
+    setDescription('');
+    setSelectedFiles({
+      text: [],
+      image: [],
+      video: [],
+      audio: []
+    });
+    setSelectedFileType(null);
+    setSelectedFile(null);
+    setTags([]);
+    setSuggestedTags([]);
   };
 
   return (
@@ -372,28 +406,84 @@ export function AgentModal({
                   </div>
                 </div>
 
-                <div className="absolute bottom-0 left-0 right-0 bg-gray-800/50 px-6 py-4 flex justify-end gap-3">
-                  <button
-                    type="button"
-                    className="inline-flex justify-center rounded-md bg-gray-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
-                    onClick={onClose}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-                    onClick={handleSubmit}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Creating...
-                      </>
-                    ) : (
-                      'Create Agent'
-                    )}
-                  </button>
+                <div className="absolute bottom-0 left-0 right-0 bg-gray-800/50 px-6 py-4">
+                  {/* Add status messages */}
+                  {progress && (
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 text-sm">
+                        {progress.error ? (
+                          <div className="text-red-500 flex items-center gap-2">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Error: {progress.error}
+                          </div>
+                        ) : (
+                          <>
+                            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            <span className="text-gray-300">
+                              {progress.step === 'database' && (
+                                <>
+                                  {progress.subStep === 'Creating agent in database...' ? 'Creating agent...' : 'Setting up agent profile...'}
+                                </>
+                              )}
+                              {progress.step === 'files' && (
+                                <div className="flex flex-col gap-1">
+                                  <span>{progress.subStep}</span>
+                                  {progress.currentFile && progress.totalFiles && (
+                                    <span className="text-xs text-gray-400">
+                                      File {progress.currentFile} of {progress.totalFiles}
+                                    </span>
+                                  )}
+                                  {progress.currentChunk && progress.totalChunks && (
+                                    <span className="text-xs text-gray-400">
+                                      Processing chunk {progress.currentChunk} of {progress.totalChunks}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {progress.step === 'tags' && 'Adding tags...'}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="flex justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={handleClearForm}
+                      className="inline-flex justify-center rounded-md bg-gray-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
+                    >
+                      Clear Form
+                    </button>
+
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md bg-gray-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
+                        onClick={onClose}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                        onClick={handleSubmit}
+                        disabled={isSubmitting}
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span className="ml-2">Creating...</span>
+                          </>
+                        ) : (
+                          'Create Agent'
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </Dialog.Panel>
             </Transition.Child>

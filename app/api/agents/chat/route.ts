@@ -1,95 +1,84 @@
+import { OpenAI } from 'openai';
 import { NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { AgentChatService } from '@/app/agents/services/agent-chat-service';
+import { AgentRAGService } from '@/app/agents/services/rag-service';
 
-// Store chat services in memory (in production, consider using Redis)
-const chatServices = new Map<string, AgentChatService>();
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || ''
+});
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    console.log('1. API endpoint called: /api/agents/chat');
-    const supabase = createRouteHandlerClient({ cookies });
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      console.log('2. Authentication failed:', authError);
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    console.log('2. User authenticated:', { userId: user.id });
-    const body = await request.json();
-    const { agentId, message } = body;
-    console.log('3. Request body:', { agentId, message });
-
-    if (!agentId || !message) {
-      console.log('4. Missing required parameters');
+    if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
-        { error: 'Agent ID and message are required' },
-        { status: 400 }
+        { error: 'OpenAI API key is not configured' },
+        { status: 500 }
       );
     }
 
-    // Get or create chat service for this agent
-    let chatService = chatServices.get(agentId);
-    if (!chatService) {
-      console.log('5. Creating new chat service for agent:', agentId);
-      // Verify agent exists and belongs to user
-      const { data: agent, error: agentError } = await supabase
-        .from('agents')
-        .select('id, name, pinecone_index')
-        .eq('id', agentId)
-        .eq('user_id', user.id)
-        .single();
+    const { messages, stream = false, isRagMode = true, agentId } = await req.json();
 
-      if (agentError || !agent) {
-        console.log('6. Agent verification failed:', { error: agentError });
-        return NextResponse.json(
-          { error: 'Agent not found or access denied' },
-          { status: 404 }
-        );
+    // If in RAG mode, use RAG service to get context
+    let enhancedMessages = [...messages];
+    if (isRagMode && agentId) {
+      const ragService = new AgentRAGService();
+      const lastMessage = messages[messages.length - 1].content;
+      const results = await ragService.queryAgentKnowledge(agentId, lastMessage, 3);
+      
+      if (results.length > 0) {
+        const context = results
+          .map(r => r.content)
+          .join('\n\n');
+
+        enhancedMessages = [
+          messages[0], // System message
+          {
+            role: 'system',
+            content: `Here is some relevant context to help with your response:\n\n${context}`
+          },
+          ...messages.slice(1) // User messages and conversation history
+        ];
       }
-
-      console.log('6. Agent verified:', agent);
-      chatService = new AgentChatService(agentId);
-      chatServices.set(agentId, chatService);
-    } else {
-      console.log('5. Using existing chat service for agent:', agentId);
     }
 
-    console.log('7. Setting up response stream');
-    // Create a TransformStream for streaming the response
-    const encoder = new TextEncoder();
-    const stream = new TransformStream();
-    const writer = stream.writable.getWriter();
+    if (stream) {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4-1106-preview',
+        messages: enhancedMessages,
+        temperature: isRagMode ? 0.7 : 0.9, // More creative in conversation mode
+        max_tokens: isRagMode ? 1000 : 500, // Longer responses for RAG evaluation
+        stream: true
+      });
 
-    // Process message with streaming
-    console.log('8. Starting chat processing');
-    chatService.chat(message, async (token: string) => {
-      console.log('Streaming token:', token);
-      await writer.write(encoder.encode(token));
-    }).then(async () => {
-      console.log('9. Chat processing complete');
-      await writer.close();
-    }).catch(async (error: Error) => {
-      console.error('10. Error in chat processing:', error);
-      await writer.write(encoder.encode(`Error: ${error.message}`));
-      await writer.close();
-    });
+      // Create a simple text stream
+      const stream = new ReadableStream({
+        async start(controller) {
+          for await (const part of response) {
+            const text = part.choices[0]?.delta?.content || '';
+            if (text) {
+              controller.enqueue(new TextEncoder().encode(text));
+            }
+          }
+          controller.close();
+        },
+      });
 
-    console.log('11. Returning streaming response');
-    return new Response(stream.readable, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    });
+      return new Response(stream);
+    } else {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4-1106-preview',
+        messages: enhancedMessages,
+        temperature: isRagMode ? 0.7 : 0.9,
+        max_tokens: isRagMode ? 1000 : 500
+      });
 
+      return NextResponse.json({
+        content: completion.choices[0].message.content
+      });
+    }
   } catch (error: any) {
-    console.error('Error in POST handler:', error);
+    console.error('Error in chat API route:', error);
     return NextResponse.json(
-      { error: 'Failed to process message' },
+      { error: error.message || 'Failed to process chat request' },
       { status: 500 }
     );
   }

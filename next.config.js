@@ -39,7 +39,10 @@ const nextConfig = {
     })
 
     return config
-  }
+  },
+  env: {
+    NEXT_PUBLIC_ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY,
+  },
 }
 
 module.exports = nextConfig 

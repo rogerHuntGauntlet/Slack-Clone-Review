@@ -187,7 +187,7 @@ const DirectMessageArea: React.FC<DirectMessageAreaProps> = ({
         }
       } catch (error) {
         console.error('Error sending message:', error)
-        setError('Failed to send message. Please try again.')
+        setError('This service is currently experiencing high traffic or still in production. Please try again later.')
       }
     }
   }

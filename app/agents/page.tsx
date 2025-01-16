@@ -8,6 +8,7 @@ import AgentCard from './components/AgentCard';
 import { AgentIdeaInput } from './components/AgentIdeaInput';
 import { CreateAgentDTO, Agent } from './types/agent-types';
 import { AgentModal } from './components/AgentModal';
+import { createAgent } from './services/agent-service';
 
 export default function AgentsPage() {
   const router = useRouter();
@@ -210,55 +211,21 @@ export default function AgentsPage() {
       if (userError) throw userError;
       if (!user) throw new Error('No user found');
 
-      // Add the chat log to the files
-      const allFiles = [...(data.files || [])];
-
-      // Create the agent with the chat log included
-      const { data: agentData, error } = await supabase.from('agents').insert({
-        name: data.name,
-        description: data.description,
-        user_id: user.id,
-        is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }).select().single();
-
-      if (error) throw error;
-
-      // Process files including the chat log
-      data.onProgress?.({ 
-        step: 'files', 
-        currentFile: 0, 
-        totalFiles: allFiles.length 
-      });
+      // Create the agent
+      const agent = await createAgent(data, user.id);
       
-      for (let i = 0; i < allFiles.length; i++) {
-        const file = allFiles[i];
-        const filePath = `${user.id}/${agentData.id}/${file.name}`;
-        
-        // Upload file to storage
-        const { error: uploadError } = await supabase.storage
-          .from('agent-files')
-          .upload(filePath, file);
-
-        if (uploadError) throw uploadError;
-
-        data.onProgress?.({ 
-          step: 'files', 
-          currentFile: i + 1, 
-          totalFiles: allFiles.length 
-        });
-      }
-
+      // Call the progress callback to indicate completion
+      data.onProgress?.({ step: 'complete' });
+      
       // Refresh the agents list
       await loadAgents();
       
-      // Close the modal
+      // Reset state and close modal
       setShowCreateAgent(false);
       setChatLogForAgent('');
+      setEditingAgent(undefined);
+      setPreloadedFiles([]);
       
-      // Call the progress callback
-      data.onProgress?.({ step: 'complete' });
     } catch (error: any) {
       console.error('Error creating agent:', error);
       data.onProgress?.({ 

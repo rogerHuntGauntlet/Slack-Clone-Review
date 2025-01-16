@@ -4,7 +4,14 @@ import { mockAgents } from '../data/mock-agents';
 import { AgentRAGService } from './rag-service';
 
 const supabase = createClientComponentClient();
-const ragService = new AgentRAGService();
+let ragService: AgentRAGService | null = null;
+
+function getRagService(): AgentRAGService {
+  if (!ragService) {
+    ragService = new AgentRAGService();
+  }
+  return ragService!;
+}
 
 interface AgentRecord {
   id: string;
@@ -92,24 +99,26 @@ async function getUserAgents(userId: string): Promise<Agent[]> {
 
   if (error) throw error;
 
-  // Transform the data to match our Agent type
-  return (agents as AgentRecord[]).map(agent => ({
-    id: agent.id,
-    name: agent.name,
-    description: agent.description,
-    isActive: agent.is_active,
-    configuration: agent.configuration,
-    userId: agent.user_id,
-    createdAt: new Date(agent.created_at),
-    updatedAt: new Date(agent.updated_at),
-    trainingFiles: agent.agent_files.map(file => ({
-      type: file.type,
-      url: file.url,
-      name: file.name,
-      size: file.size
-    })),
-    tags: agent.agent_tags.map(tag => tag.tags.name)
-  }));
+  // Transform the data to match our Agent type and filter out PhD Knowledge Agent
+  return (agents as AgentRecord[])
+    .filter(agent => agent.name !== 'PhD Knowledge Agent')
+    .map(agent => ({
+      id: agent.id,
+      name: agent.name,
+      description: agent.description,
+      isActive: agent.is_active,
+      configuration: agent.configuration,
+      userId: agent.user_id,
+      createdAt: new Date(agent.created_at),
+      updatedAt: new Date(agent.updated_at),
+      trainingFiles: agent.agent_files.map(file => ({
+        type: file.type,
+        url: file.url,
+        name: file.name,
+        size: file.size
+      })),
+      tags: agent.agent_tags.map(tag => tag.tags.name)
+    }));
 }
 
 export async function getTemplateAgents(): Promise<Agent[]> {
@@ -137,7 +146,7 @@ export async function createAgentFromTemplate(templateId: string, userId: string
 }
 
 export async function createAgent(dto: CreateAgentDTO, userId: string): Promise<Agent> {
-  // Start a transaction
+  // First create the agent in database
   dto.onProgress?.({ step: 'database', subStep: 'Creating agent in database...' });
   
   const { data: agent, error: agentError } = await supabase
@@ -209,32 +218,51 @@ export async function createAgent(dto: CreateAgentDTO, userId: string): Promise<
     }
   }
 
-  // Process files for RAG if they exist
+  // Handle file uploads if they exist
+  const uploadedFiles: TrainingFile[] = [];
   if (dto.files && dto.files.length > 0) {
     try {
       for (let i = 0; i < dto.files.length; i++) {
-        const file = dto.files[i];
         dto.onProgress?.({ 
           step: 'files', 
-          subStep: 'Uploading file to storage...', 
+          subStep: 'Uploading files to storage...', 
           currentFile: i + 1, 
           totalFiles: dto.files.length 
         });
         
-        const uploadedFile = await uploadTrainingFile(agent.id, file);
-        
-        dto.onProgress?.({ 
-          step: 'rag', 
-          subStep: 'Processing file content and creating chunks...', 
-          currentFile: i + 1, 
-          totalFiles: dto.files.length 
-        });
-        
-        await ragService.processAgentFile(agent.id, uploadedFile, await file.text());
+        const file = dto.files[i];
+        const uploadedFile = await uploadTrainingFile(agent.id, file); // Now we have the correct agent.id
+        uploadedFiles.push(uploadedFile);
+      }
+
+      // Process files through RAG service
+      dto.onProgress?.({ 
+        step: 'files', 
+        subStep: 'Processing files for knowledge base...', 
+        currentFile: 1, 
+        totalFiles: uploadedFiles.length 
+      });
+
+      // Create FormData with files
+      const formData = new FormData();
+      formData.append('agentId', agent.id);
+      dto.files.forEach(file => {
+        formData.append('files', file);
+      });
+
+      // Send files to process-files endpoint
+      const response = await fetch('/api/agents/process-files', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to process files');
       }
     } catch (error: any) {
       dto.onProgress?.({ 
-        step: 'rag', 
+        step: 'files', 
         error: error.message 
       });
       throw error;
@@ -279,7 +307,7 @@ export async function updateAgent(dto: UpdateAgentDTO): Promise<void> {
         const uploadedFile = await uploadTrainingFile(dto.id, file);
         
         // Then process it for RAG
-        await ragService.processAgentFile(dto.id, uploadedFile, await file.text());
+        await ragService?.processAgentFile(dto.id, uploadedFile, await file.text());
       }
     } catch (error) {
       console.error('Error processing files for RAG:', error);
@@ -341,46 +369,62 @@ export async function uploadTrainingFile(
   // Generate a unique file path
   const timestamp = new Date().getTime();
   const fileExt = file.name.split('.').pop();
-  const filePath = `training-files/${agentId}/${timestamp}-${file.name}`;
+  const filePath = `${agentId}/${timestamp}-${file.name}`;
+  const bucketName = 'agent-files'; // Changed from 'agents' to 'agent-files'
 
-  // Upload file to storage
-  const { data: uploadData, error: uploadError } = await supabase.storage
-    .from('agents')
-    .upload(filePath, file, {
-      onUploadProgress: ({ count, total }: { count: number; total: number }) => {
-        const progress = (count / total) * 100;
-        onProgress?.(progress);
+  try {
+    // Upload file to storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(bucketName)
+      .upload(filePath, file, {
+        onUploadProgress: ({ count, total }: { count: number; total: number }) => {
+          const progress = (count / total) * 100;
+          onProgress?.(progress);
+        }
+      });
+
+    if (uploadError) {
+      console.error('Upload error:', uploadError);
+      if (uploadError.message.includes('Bucket not found')) {
+        throw new Error('Storage bucket not configured. Please ensure the agent-files bucket exists in Supabase storage.');
       }
-    });
+      throw uploadError;
+    }
 
-  if (uploadError) throw uploadError;
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from(bucketName)
+      .getPublicUrl(filePath);
 
-  // Get public URL
-  const { data: { publicUrl } } = supabase.storage
-    .from('agents')
-    .getPublicUrl(filePath);
+    // Create file record
+    const { data: fileRecord, error: fileError } = await supabase
+      .from('agent_files')
+      .insert({
+        agent_id: agentId,
+        type: getFileType(file.type),
+        url: publicUrl,
+        name: file.name,
+        size: file.size
+      })
+      .select()
+      .single();
 
-  // Create file record
-  const { data: fileRecord, error: fileError } = await supabase
-    .from('agent_files')
-    .insert({
-      agent_id: agentId,
-      type: getFileType(file.type),
-      url: publicUrl,
-      name: file.name,
-      size: file.size
-    })
-    .select()
-    .single();
+    if (fileError) {
+      // If file record creation fails, try to clean up the uploaded file
+      await supabase.storage.from(bucketName).remove([filePath]);
+      throw fileError;
+    }
 
-  if (fileError) throw fileError;
-
-  return {
-    type: fileRecord.type as FileType,
-    url: fileRecord.url,
-    name: fileRecord.name,
-    size: fileRecord.size
-  };
+    return {
+      type: fileRecord.type as FileType,
+      url: fileRecord.url,
+      name: fileRecord.name,
+      size: fileRecord.size
+    };
+  } catch (error: any) {
+    // Add more context to the error
+    throw new Error(`Failed to upload file ${file.name}: ${error.message}`);
+  }
 }
 
 function getFileType(mimeType: string): 'text' | 'image' | 'video' | 'audio' {

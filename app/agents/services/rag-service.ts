@@ -4,17 +4,12 @@ import { TrainingFile } from '../types/agent-types';
 import pLimit from 'p-limit';
 import { FileProcessor } from './file-processor';
 
-// Initialize clients
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Remove global OpenAI initialization
+let openaiClient: OpenAI | null = null;
 
-if (!process.env.PINECONE_API_KEY) {
-  throw new Error('PINECONE_API_KEY environment variable is not set');
-}
-
+// Initialize Pinecone only when PINECONE_API_KEY is available
 const pinecone = new Pinecone({
-  apiKey: process.env.PINECONE_API_KEY
+  apiKey: process.env.PINECONE_API_KEY || ''
 });
 
 interface DocumentChunk {
@@ -45,6 +40,18 @@ export class AgentRAGService {
 
   constructor(progressCallback?: (progress: ProcessProgress) => void) {
     this.progressCallback = progressCallback;
+  }
+
+  private getOpenAI(): OpenAI {
+    if (!openaiClient) {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY environment variable is not set');
+      }
+      openaiClient = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+    }
+    return openaiClient;
   }
 
   private async getIndex() {
@@ -90,6 +97,7 @@ export class AgentRAGService {
 
   private async generateEmbedding(text: string) {
     try {
+      const openai = this.getOpenAI();
       const response = await openai.embeddings.create({
         model: "text-embedding-ada-002",
         input: text,
@@ -178,36 +186,47 @@ export class AgentRAGService {
         throw new Error('Query cannot be empty');
       }
 
-      const index = await this.getIndex();
-      const queryEmbedding = await this.generateEmbedding(query);
-
-      const results = await index.query({
-        vector: queryEmbedding,
-        topK,
-        filter: { agentId: { $eq: agentId } },
-        includeMetadata: true
+      // Make API call to our backend endpoint
+      const response = await fetch('/api/agents/query-knowledge', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId,
+          query,
+          topK
+        })
       });
 
-      return results.matches
-        .filter(match => match.metadata) // Filter out any undefined metadata
-        .map(match => ({
-          score: match.score || 0,
-          content: match.metadata!.content as string,
-          fileName: match.metadata!.fileName as string
-        }));
+      if (!response.ok) {
+        throw new Error('Failed to query agent knowledge');
+      }
+
+      const results = await response.json();
+      return results.matches;
     } catch (error: any) {
-      throw new Error(`Failed to query agent knowledge: ${error.message}`);
+      console.error('Failed to query agent knowledge:', error);
+      throw error;
     }
   }
 
   async deleteAgentKnowledge(agentId: string) {
     try {
-      const index = await this.getIndex();
-      await index.deleteMany({
-        filter: { agentId: { $eq: agentId } }
+      const response = await fetch('/api/agents/delete-knowledge', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ agentId })
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete agent knowledge');
+      }
     } catch (error: any) {
-      throw new Error(`Failed to delete agent knowledge: ${error.message}`);
+      console.error('Failed to delete agent knowledge:', error);
+      throw error;
     }
   }
 }
