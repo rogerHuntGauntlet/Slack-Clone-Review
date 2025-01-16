@@ -12,5 +12,15 @@
       "memory": 1024,
       "maxDuration": 10
     }
+  },
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "feature/animated-robot-avatar": true
+    }
+  },
+  "github": {
+    "enabled": true,
+    "silent": true
   }
 } 
