@@ -61,12 +61,6 @@ const slideKeyframes = `@keyframes slide-back-forth {
   }
 }`;
 
-const styles = document.createElement('style');
-styles.innerHTML = slideKeyframes;
-if (typeof document !== 'undefined') {
-  document.head.appendChild(styles);
-}
-
 function AuthContent({ workspaceId }: AuthContentProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -87,6 +81,16 @@ function AuthContent({ workspaceId }: AuthContentProps) {
     password?: string;
     confirmPassword?: string;
   }>({})
+
+  useEffect(() => {
+    const styleEl = document.createElement('style');
+    styleEl.innerHTML = slideKeyframes;
+    document.head.appendChild(styleEl);
+    
+    return () => {
+      styleEl.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (shouldRefresh) {
