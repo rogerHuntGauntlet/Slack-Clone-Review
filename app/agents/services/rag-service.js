@@ -5,7 +5,7 @@ export class AgentRAGService {
   static CHUNK_SIZE = 500; // characters
   static CHUNK_OVERLAP = 50;
   static VECTOR_DIMENSION = 1536; // OpenAI ada-002 dimension
-  static INDEX_NAME = 'agent-knowledge';
+  static INDEX_NAME = process.env.PINECONE_INDEX || 'slack-rag'; // Use environment variable or fallback
 
   constructor() {
     this.openai = new OpenAI({

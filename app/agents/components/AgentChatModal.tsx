@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Minimize2, Maximize2, Volume2, VolumeX } from 'lucide-react'
 import { AnimatedAvatar } from '@/components/AnimatedAvatar'
 import { sendMessageToAgent, getAgentChatHistory } from '../services/agent-chat-service'
+import { WebSearchAgentChatModal } from '../web-search-agent/components/WebSearchAgentChatModal'
 
 interface AgentChatModalProps {
   agentId: string
@@ -38,6 +39,7 @@ export default function AgentChatModal({
   const [isAvatarCollapsed, setIsAvatarCollapsed] = useState(false)
   const [currentSummary, setCurrentSummary] = useState<string>('')
   const [isMuted, setIsMuted] = useState(false)
+  const [showWebSearchModal, setShowWebSearchModal] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
@@ -56,50 +58,101 @@ export default function AgentChatModal({
     scrollToBottom();
   }, [messages]);
 
-  const speakWithWebSpeech = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
+  // Initialize voice synthesis
+  useEffect(() => {
+    // Pre-initialize speech synthesis
+    if ('speechSynthesis' in window) {
+      // Load voices
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          // Find and pre-select a good voice
+          const preferredVoice = voices.find(
+            voice => 
+              voice.lang.startsWith('en') && 
+              (voice.name.includes('Neural') || 
+               voice.name.includes('Natural') ||
+               !voice.name.includes('Microsoft'))
+          );
+          if (preferredVoice) {
+            console.log('🎤 Pre-selected voice:', preferredVoice.name);
+            // Create and speak a silent utterance to initialize the engine
+            const warmupUtterance = new SpeechSynthesisUtterance('');
+            warmupUtterance.voice = preferredVoice;
+            warmupUtterance.volume = 0;
+            window.speechSynthesis.speak(warmupUtterance);
+          }
+        }
+      };
+
+      // Load voices immediately if available
+      loadVoices();
+      
+      // Also handle async voice loading
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+      
+      return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+      };
+    }
+  }, []);
+
+  const speakWithWebSpeech = async (text: string) => {
+    if (!('speechSynthesis' in window) || isMuted) return;
     
     // Cancel any ongoing speech
     window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    // Split text into smaller chunks for more responsive speech
+    const chunks = text.match(/[^.!?]+[.!?]+/g) || [text];
     
-    // Customize voice settings
-    utterance.rate = 1.0;  // Normal speed
-    utterance.pitch = 1.0; // Normal pitch
-    utterance.volume = 1.0; // Full volume
-    
-    // Try to find a good voice
-    const voices = window.speechSynthesis.getVoices();
-    const preferredVoice = voices.find(
-      voice => 
-        voice.lang.startsWith('en') && // English voices
-        (voice.name.includes('Neural') || // Prefer neural/natural voices
-         voice.name.includes('Natural') ||
-         !voice.name.includes('Microsoft')) // Avoid old Microsoft voices
-    );
-    
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
+    for (const chunk of chunks) {
+      const utterance = new SpeechSynthesisUtterance(chunk.trim());
+      
+      // Customize voice settings
+      utterance.rate = 1.1;  // Slightly faster
+      utterance.pitch = 1.0; // Normal pitch
+      utterance.volume = 1.0; // Full volume
+      
+      // Try to find a good voice
+      const voices = window.speechSynthesis.getVoices();
+      const preferredVoice = voices.find(
+        voice => 
+          voice.lang.startsWith('en') && // English voices
+          (voice.name.includes('Neural') || // Prefer neural/natural voices
+           voice.name.includes('Natural') ||
+           !voice.name.includes('Microsoft')) // Avoid old Microsoft voices
+      );
+      
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+      }
+
+      utterance.onstart = () => {
+        setIsAvatarSpeaking(true);
+        setAvatarEmotion('happy');
+      };
+
+      utterance.onend = () => {
+        setIsAvatarSpeaking(false);
+        setAvatarEmotion('neutral');
+      };
+
+      utterance.onerror = (event) => {
+        console.warn('Speech synthesis error:', event);
+        setIsAvatarSpeaking(false);
+        setAvatarEmotion('neutral');
+      };
+
+      // Return a promise that resolves when the chunk is done speaking
+      await new Promise<void>((resolve) => {
+        utterance.onend = () => {
+          setIsAvatarSpeaking(false);
+          resolve();
+        };
+        window.speechSynthesis.speak(utterance);
+      });
     }
-
-    utterance.onstart = () => {
-      setIsAvatarSpeaking(true);
-      setAvatarEmotion('happy');
-    };
-
-    utterance.onend = () => {
-      setIsAvatarSpeaking(false);
-      setAvatarEmotion('neutral');
-    };
-
-    utterance.onerror = (event) => {
-      console.warn('Speech synthesis error:', event);
-      setIsAvatarSpeaking(false);
-      setAvatarEmotion('neutral');
-    };
-
-    window.speechSynthesis.speak(utterance);
   };
 
   const playGreeting = async () => {
@@ -178,7 +231,7 @@ export default function AgentChatModal({
       }
     } catch (error) {
       console.warn('Falling back to Web Speech API:', error);
-      speakWithWebSpeech(text);
+      await speakWithWebSpeech(text);
     }
   };
 
@@ -250,6 +303,8 @@ export default function AgentChatModal({
     e.preventDefault()
     if (!inputValue.trim() || isLoading) return
 
+    console.log('🎯 Submitting message:', inputValue);
+    
     const userMessage = {
       id: Date.now().toString(),
       content: inputValue,
@@ -265,6 +320,8 @@ export default function AgentChatModal({
     setIsAvatarSpeaking(false)
     setCurrentSummary('')
 
+    console.log('🔄 Starting chat, initial phase: rag');
+
     // Create a placeholder for the agent's response
     const agentMessageId = (Date.now() + 1).toString()
     const agentMessage = {
@@ -279,69 +336,107 @@ export default function AgentChatModal({
     try {
       let accumulatedMessage = '';
       let lastSummaryLength = 0;
-      const summaryUpdateThreshold = 100;
+      const summaryUpdateThreshold = 50; // Lower threshold for more frequent summaries
 
+      console.log('📡 Calling sendMessageToAgent');
+      setLoadingPhase('llm'); // Start with LLM phase
+      
       const response = await sendMessageToAgent(
         agentId, 
-        inputValue, 
-        pineconeNamespace,
+        inputValue,
         async (chunk) => {
           if (!accumulatedMessage) {
-            setLoadingPhase('streaming')
+            console.log('📝 Received first chunk, switching to streaming phase');
+            setLoadingPhase('streaming');
           }
           
           // Immediately update the UI with the new chunk
-          setMessages(prev => prev.map(msg => 
-            msg.id === agentMessageId
-              ? { ...msg, content: msg.content + chunk }
-              : msg
-          ))
+          console.log('📝 Updating UI with chunk:', chunk);
+          setMessages(prev => {
+            const updated = prev.map(msg => 
+              msg.id === agentMessageId
+                ? { ...msg, content: msg.content + chunk }
+                : msg
+            );
+            console.log('📝 Updated messages:', updated.length);
+            return updated;
+          });
           
           accumulatedMessage += chunk;
           scrollToBottom('auto');
           
-          // Only generate summary if we have enough new content
+          // Generate summary more frequently for better voice feedback
           if (accumulatedMessage.length - lastSummaryLength >= summaryUpdateThreshold) {
+            console.log('📊 Generating summary for accumulated content');
             lastSummaryLength = accumulatedMessage.length;
-            setIsSummarizing(true)
-            const summary = await generateSummary(accumulatedMessage);
-            if (summary) {
-              setCurrentSummary(summary);
-              await speakResponse(summary);
+            setIsSummarizing(true);
+            
+            try {
+              const summary = await generateSummary(accumulatedMessage);
+              if (summary) {
+                console.log('🗣️ Speaking summary:', summary);
+                setCurrentSummary(summary);
+                await speakResponse(summary);
+              }
+            } catch (summaryError) {
+              console.warn('⚠️ Error generating summary:', summaryError);
+              // If summary fails, try speaking the raw chunk
+              if (!isMuted) {
+                await speakResponse(chunk);
+              }
+            } finally {
+              setIsSummarizing(false);
             }
-            setIsSummarizing(false)
           }
         }
-      )
+      );
       
       if (response?.message) {
+        console.log('✅ Chat complete, final message length:', response.message.length);
+        
         // Generate final summary for the complete response
-        const summary = await generateSummary(response.message)
-        
-        // Update the agent message with any sources
-        setMessages(prev => prev.map(msg => 
-          msg.id === agentMessageId 
-            ? {
-                ...msg,
-                summary,
-                sources: response.sources
-              }
-            : msg
-        ))
-        
-        setCurrentSummary(summary || '')
-        setAvatarEmotion('happy')
+        try {
+          const summary = await generateSummary(response.message);
+          
+          // Update the agent message with any sources
+          setMessages(prev => {
+            const updated = prev.map(msg => 
+              msg.id === agentMessageId 
+                ? {
+                    ...msg,
+                    content: response.message, // Ensure final message is set
+                    summary,
+                    sources: response.sources
+                  }
+                : msg
+            );
+            console.log('📝 Final message update:', updated.length);
+            return updated;
+          });
+          
+          setCurrentSummary(summary || '');
+          setAvatarEmotion('happy');
 
-        // Speak the final summary
-        if (summary) {
-          await speakResponse(summary);
+          // Speak the final summary
+          if (summary) {
+            console.log('🗣️ Speaking final summary');
+            await speakResponse(summary);
+          }
+        } catch (finalSummaryError) {
+          console.warn('⚠️ Error generating final summary:', finalSummaryError);
+          // If final summary fails, try speaking the last part of the message
+          if (!isMuted) {
+            const lastPart = response.message.split('.').slice(-2).join('.');
+            await speakResponse(lastPart);
+          }
         }
       } else {
-        throw new Error('No response from agent')
+        console.warn('⚠️ No message in response');
+        throw new Error('No response from agent');
       }
 
     } catch (error) {
-      console.error('Error in agent chat:', error)
+      console.error('❌ Error in chat:', error)
       setAvatarEmotion('surprised')
       
       // Update the agent message with error
@@ -356,6 +451,7 @@ export default function AgentChatModal({
       
       setTimeout(() => setAvatarEmotion('neutral'), 2000)
     } finally {
+      console.log('🏁 Chat interaction complete');
       setIsLoading(false)
       setLoadingPhase(null)
       scrollToBottom('smooth')
@@ -415,13 +511,50 @@ export default function AgentChatModal({
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
           <h2 className="text-xl font-semibold ml-[220px]">Chat with {agentName}</h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => {
+                console.log('Opening web search for agent:', {
+                  agentId,
+                  agentName,
+                  pineconeNamespace
+                });
+                setShowWebSearchModal(true);
+              }}
+              className="px-3 py-1.5 text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-colors duration-200 flex items-center space-x-1"
+            >
+              <svg 
+                className="w-4 h-4" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" 
+                />
+              </svg>
+              <span>Enable Web Search</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
+
+        {/* Web Search Modal */}
+        {showWebSearchModal && (
+          <WebSearchAgentChatModal
+            isOpen={showWebSearchModal}
+            onClose={() => setShowWebSearchModal(false)}
+            agentId={agentId}
+          />
+        )}
 
         {/* Chat Area */}
         <div className="flex-1 flex flex-col p-4 overflow-hidden">
@@ -497,7 +630,7 @@ export default function AgentChatModal({
                           <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
                         </div>
                         <span className="text-sm text-gray-600 dark:text-gray-300">
-                          Calling an LLM as backup...
+                          Using LLM with agent context...
                         </span>
                       </div>
                     )}

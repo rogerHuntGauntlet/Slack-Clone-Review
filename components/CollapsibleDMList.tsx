@@ -6,10 +6,7 @@ import { supabase, getWorkspaceUsers, createUserProfile } from '../lib/supabase'
 import Link from 'next/link'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import dynamic from 'next/dynamic'
-
-const AgentChatModal = dynamic(() => import('@/app/agents/components/AgentChatModal'), {
-  loading: () => <div>Loading...</div>
-})
+import { WebSearchAgentChatModal } from '@/app/agents/web-search-agent/components/WebSearchAgentChatModal'
 
 interface DMUser {
   id: string;
@@ -276,7 +273,7 @@ export default function CollapsibleDMList({
       return
     }
 
-    // Special handling for agents
+    // Special handling for agents - open WebSearchAgentChatModal directly
     if (user.is_agent) {
       setSelectedAgent({
         id: userId,
@@ -388,12 +385,11 @@ export default function CollapsibleDMList({
         </div>
       </div>
 
-      {/* Agent Chat Modal */}
+      {/* Replace AgentChatModal with WebSearchAgentChatModal */}
       {selectedAgent && (
-        <AgentChatModal
+        <WebSearchAgentChatModal
+          isOpen={true}
           agentId={selectedAgent.id}
-          agentName={selectedAgent.name}
-          pineconeNamespace={selectedAgent.pineconeNamespace}
           onClose={() => setSelectedAgent(null)}
         />
       )}

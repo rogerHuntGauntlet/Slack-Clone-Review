@@ -107,4 +107,4 @@ export class AgentRAGService {
 AgentRAGService.CHUNK_SIZE = 500; // characters
 AgentRAGService.CHUNK_OVERLAP = 50;
 AgentRAGService.VECTOR_DIMENSION = 1536; // OpenAI ada-002 dimension
-AgentRAGService.INDEX_NAME = 'agent-knowledge';
+AgentRAGService.INDEX_NAME = 'agent-store';
