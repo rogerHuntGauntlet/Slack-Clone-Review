@@ -1,108 +1,166 @@
-import { AgentRAGService } from './rag-service';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
+interface AgentMessage {
+  id: string
+  content: string
+  role: 'user' | 'agent'
+  timestamp: Date
+  sources?: Array<{
+    title: string
+    content: string
+    relevance: number
+  }>
 }
 
-export class AgentChatService {
-  private agentId: string;
-  private conversationHistory: ChatMessage[] = [];
-  private isRagMode: boolean = true;
+interface AgentChatResponse {
+  message: string
+  sources?: Array<{
+    title: string
+    content: string
+    relevance: number
+  }>
+}
 
-  constructor(agentId: string) {
-    this.agentId = agentId;
-  }
+interface DatabaseMessage {
+  id: string
+  agent_id: string
+  content: string
+  role: 'user' | 'agent'
+  timestamp: string
+}
 
-  setRagMode(enabled: boolean) {
-    this.isRagMode = enabled;
-  }
+export async function sendMessageToAgent(
+  agentId: string,
+  message: string,
+  pineconeNamespace?: string,
+  onStream?: (chunk: string) => void
+): Promise<AgentChatResponse> {
+  const supabase = createClientComponentClient()
 
-  async chat(message: string, onToken?: (token: string) => void) {
-    try {
-      // Build messages array with conversation history
-      const messages: ChatMessage[] = [
-        {
-          role: 'system',
-          content: this.isRagMode 
-            ? `You are an AI agent evaluator. Analyze the user's idea and provide detailed feedback on its feasibility, potential challenges, and suggestions for improvement. Be thorough but constructive.`
-            : `You are a helpful AI assistant with expertise in the domain we've been discussing. Maintain context from our conversation and provide clear, natural responses. Be concise but informative.`
-        },
-        ...this.conversationHistory,
-        {
-          role: 'user',
-          content: message
-        }
-      ];
+  try {
+    // First, validate the agent exists and is active
+    const { data: agent, error: agentError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', agentId)
+      .eq('is_active', true)
+      .single()
 
-      let response: string;
+    if (agentError || !agent) {
+      throw new Error('Agent not found or inactive')
+    }
 
-      if (onToken) {
-        // Streaming response
-        const apiResponse = await fetch('/api/agents/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages,
-            stream: true,
-            isRagMode: this.isRagMode
-          })
-        });
+    // Determine which endpoint to use based on whether Pinecone is set up
+    const endpoint = agent.pinecone_namespace
+      ? '/api/agents/rag-chat'
+      : '/api/agents/chat';
 
-        if (!apiResponse.ok) throw new Error('Failed to get streaming response');
+    // Call the appropriate endpoint
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        agentId,
+        message,
+        pineconeNamespace: agent.pinecone_namespace,
+        stream: !!onStream
+      }),
+    });
 
-        const reader = apiResponse.body?.getReader();
-        if (!reader) throw new Error('Failed to get response reader');
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to get response from agent');
+    }
 
-        let fullResponse = '';
-        try {
-          const decoder = new TextDecoder();
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            
-            const text = decoder.decode(value);
-            if (text) {
-              fullResponse += text;
-              onToken(text);
+    // Handle streaming response
+    if (onStream && response.headers.get('content-type')?.includes('text/event-stream')) {
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullMessage = '';
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          // Decode the chunk and add to buffer
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete SSE messages
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(5).trim(); // Remove 'data: ' prefix and whitespace
+              
+              // Check if it's the end marker
+              if (data === '[DONE]') continue;
+              
+              try {
+                // Parse the JSON data
+                const parsed = JSON.parse(data);
+                if (parsed.content) {
+                  fullMessage += parsed.content;
+                  // Pass just the content to the callback
+                  onStream(parsed.content);
+                }
+              } catch (e) {
+                console.warn('Error parsing SSE data:', e);
+              }
             }
           }
-        } finally {
-          reader.releaseLock();
         }
-        response = fullResponse;
-      } else {
-        // Non-streaming response
-        const apiResponse = await fetch('/api/agents/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages,
-            stream: false,
-            isRagMode: this.isRagMode
-          })
-        });
-
-        if (!apiResponse.ok) throw new Error('Failed to get response');
-
-        const data = await apiResponse.json();
-        response = data.content;
       }
 
-      // Add the exchange to conversation history
-      this.conversationHistory.push(
-        { role: 'user', content: message },
-        { role: 'assistant', content: response }
-      );
-
-      return response;
-    } catch (error: any) {
-      console.error('Error in chat service:', error);
-      throw error;
+      // Return the complete message
+      return {
+        message: fullMessage,
+        sources: []
+      };
     }
-  }
 
-  clearHistory() {
-    this.conversationHistory = [];
+    // Handle regular response
+    const data = await response.json();
+    return {
+      message: data.message,
+      sources: data.sources
+    };
+
+  } catch (error) {
+    console.error('Error in sendMessageToAgent:', error)
+    throw error
+  }
+}
+
+export async function getAgentChatHistory(
+  agentId: string,
+  limit: number = 50
+): Promise<AgentMessage[]> {
+  const supabase = createClientComponentClient()
+
+  try {
+    const { data, error } = await supabase
+      .from('agent_chat_messages')
+      .select('*')
+      .eq('agent_id', agentId)
+      .order('timestamp', { ascending: true })
+      .limit(limit)
+
+    if (error) throw error
+
+    return (data as DatabaseMessage[]).map(msg => ({
+      id: msg.id,
+      content: msg.content,
+      role: msg.role,
+      timestamp: new Date(msg.timestamp)
+    }))
+
+  } catch (error) {
+    console.error('Error fetching agent chat history:', error)
+    throw error
   }
 } 

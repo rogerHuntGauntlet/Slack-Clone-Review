@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     // Verify agent belongs to user
     const { data: agent, error: agentError } = await supabase
       .from('agents')
-      .select('id')
+      .select('id, pinecone_namespace')
       .eq('id', agentId)
       .eq('user_id', user.id)
       .single();
@@ -41,11 +41,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Delete from Pinecone
-    const index = pinecone.index(process.env.PINECONE_INDEX_NAME || '');
-    await index.deleteMany({
-      filter: { agentId: { $eq: agentId } }
-    });
+    // Delete from Pinecone using agent-store index
+    const index = pinecone.index('agent-store');
+    await index.namespace(agent.pinecone_namespace).deleteAll();
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

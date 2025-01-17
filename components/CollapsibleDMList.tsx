@@ -5,6 +5,11 @@ import { User, ChevronDown, ChevronRight } from 'lucide-react'
 import { supabase, getWorkspaceUsers, createUserProfile } from '../lib/supabase'
 import Link from 'next/link'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import dynamic from 'next/dynamic'
+
+const AgentChatModal = dynamic(() => import('@/app/agents/components/AgentChatModal'), {
+  loading: () => <div>Loading...</div>
+})
 
 interface DMUser {
   id: string;
@@ -60,6 +65,11 @@ export default function CollapsibleDMList({
     { title: 'Contacts', users: [], isCollapsed: false }
   ])
   const [currentUser, setCurrentUser] = useState<DMUser | null>(null)
+  const [selectedAgent, setSelectedAgent] = useState<{
+    id: string;
+    name: string;
+    pineconeNamespace?: string;
+  } | null>(null)
   const isCollapsed = controlledIsCollapsed ?? internalIsCollapsed
   const supabase = createClientComponentClient()
   
@@ -150,6 +160,7 @@ export default function CollapsibleDMList({
         `)
         .eq('user_id', currentUserId)
         .eq('is_active', true)
+        .neq('name', 'PhD Knowledge Agent')
         .order('created_at', { ascending: false })
 
       if (agentsError) {
@@ -266,10 +277,10 @@ export default function CollapsibleDMList({
 
     // Special handling for agents
     if (user.is_agent) {
-      onSelectDMAction(userId, { 
-        isAgent: true,
-        agentNamespace: user.is_incomplete ? undefined : user.pinecone_namespace,
-        startTyping: true 
+      setSelectedAgent({
+        id: userId,
+        name: user.username,
+        pineconeNamespace: user.pinecone_namespace
       })
       return
     }
@@ -365,6 +376,16 @@ export default function CollapsibleDMList({
           ))}
         </div>
       </div>
+
+      {/* Agent Chat Modal */}
+      {selectedAgent && (
+        <AgentChatModal
+          agentId={selectedAgent.id}
+          agentName={selectedAgent.name}
+          pineconeNamespace={selectedAgent.pineconeNamespace}
+          onClose={() => setSelectedAgent(null)}
+        />
+      )}
     </>
   )
 }

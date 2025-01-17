@@ -149,6 +149,9 @@ export async function createAgent(dto: CreateAgentDTO, userId: string): Promise<
   // First create the agent in database
   dto.onProgress?.({ step: 'database', subStep: 'Creating agent in database...' });
   
+  // Create a unique namespace for this agent
+  const namespace = `agent-${userId}-${Date.now()}`;
+  
   const { data: agent, error: agentError } = await supabase
     .from('agents')
     .insert({
@@ -156,7 +159,8 @@ export async function createAgent(dto: CreateAgentDTO, userId: string): Promise<
       description: dto.description,
       configuration: dto.configuration,
       user_id: userId,
-      pinecone_namespace: `agent-${userId}-${Date.now()}` // Add unique namespace for this agent
+      pinecone_index: 'agent-store',  // Use the specific index
+      pinecone_namespace: namespace  // Use the generated namespace
     })
     .select()
     .single();

@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     // Verify agent belongs to user
     const { data: agent, error: agentError } = await supabase
       .from('agents')
-      .select('id')
+      .select('id, pinecone_namespace')
       .eq('id', agentId)
       .eq('user_id', user.id)
       .single();
@@ -52,19 +52,18 @@ export async function POST(request: Request) {
       input: query
     });
 
-    const queryEmbedding = embeddingResponse.data[0].embedding;
+    const embedding = embeddingResponse.data[0].embedding;
 
-    // Query Pinecone
-    const index = pinecone.index(process.env.PINECONE_INDEX_NAME || '');
-    const results = await index.query({
-      vector: queryEmbedding,
+    // Query Pinecone using agent-store index
+    const index = pinecone.index('agent-store');
+    const queryResponse = await index.namespace(agent.pinecone_namespace).query({
+      vector: embedding,
       topK,
-      filter: { agentId: { $eq: agentId } },
       includeMetadata: true
     });
 
     // Format results
-    const matches = results.matches
+    const matches = queryResponse.matches
       .filter(match => match.metadata)
       .map(match => ({
         score: match.score || 0,

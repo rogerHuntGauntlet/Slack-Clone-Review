@@ -37,11 +37,14 @@ async function processFileContent(
   agentId: string,
   namespace: string
 ): Promise<void> {
+  console.log(`Processing file ${file.name} for agent ${agentId} in namespace ${namespace}`);
+  
   const CHUNK_SIZE = 500;
   const CHUNK_OVERLAP = 50;
   
   // Read file content
   const content = await file.text();
+  console.log(`File content length: ${content.length} characters`);
   
   // Split into chunks
   const chunks: string[] = [];
@@ -51,17 +54,21 @@ async function processFileContent(
     chunks.push(content.slice(currentIndex, chunkEnd));
     currentIndex += CHUNK_SIZE - CHUNK_OVERLAP;
   }
+  console.log(`Split content into ${chunks.length} chunks`);
 
   // Get Pinecone index
-  const index = pinecone.index(process.env.PINECONE_INDEX_NAME || '');
+  const index = pinecone.index('agent-store');
+  console.log('Got Pinecone index: agent-store');
 
   // Process chunks
   for (let i = 0; i < chunks.length; i++) {
+    console.log(`Processing chunk ${i + 1}/${chunks.length}`);
     const chunk = chunks[i];
     const embedding = await generateEmbedding(chunk);
+    console.log(`Generated embedding for chunk ${i + 1}`);
     
     // Store in Pinecone
-    await index.upsert([{
+    await index.namespace(namespace).upsert([{
       id: `${agentId}-${file.name}-${i}`,
       values: embedding,
       metadata: {
@@ -71,7 +78,9 @@ async function processFileContent(
         content: chunk
       }
     }]);
+    console.log(`Stored chunk ${i + 1} in Pinecone namespace ${namespace}`);
   }
+  console.log(`Completed processing file ${file.name}`);
 }
 
 export async function POST(request: Request) {
@@ -83,9 +92,9 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
-    if (!process.env.PINECONE_API_KEY || !process.env.PINECONE_ENVIRONMENT || !process.env.PINECONE_INDEX_NAME) {
+    if (!process.env.PINECONE_API_KEY) {
       return NextResponse.json(
-        { error: 'Pinecone configuration not complete' },
+        { error: 'Pinecone API key not configured' },
         { status: 500 }
       );
     }
@@ -119,25 +128,21 @@ export async function POST(request: Request) {
       .single();
 
     if (agentError || !agent) {
+      console.error('Agent verification failed:', agentError);
       return NextResponse.json(
         { error: 'Agent not found or access denied' },
         { status: 404 }
       );
     }
 
+    console.log(`Processing ${files.length} files for agent ${agentId}`);
+    
     // Process each file
     for (const file of files) {
-      try {
-        await processFileContent(file, agentId, agent.pinecone_namespace);
-      } catch (fileError: any) {
-        console.error(`Error processing file ${file.name}:`, fileError);
-        return NextResponse.json(
-          { error: `Failed to process file ${file.name}: ${fileError.message}` },
-          { status: 500 }
-        );
-      }
+      await processFileContent(file, agentId, agent.pinecone_namespace);
     }
 
+    console.log('Successfully processed all files');
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Error processing files:', error);

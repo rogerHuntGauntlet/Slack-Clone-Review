@@ -57,26 +57,47 @@ export default function AgentsPage() {
       if (userError) throw userError;
       if (!user) throw new Error('No user found');
 
+      console.log('Loading agents for user:', user.id);
+
       const { data, error } = await supabase
         .from('agents')
-        .select('*, agent_tags(tag_id, tags(name))')
+        .select('*, agent_tags(tag_id, tags(name)), agent_files(*)')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+      
+      console.log('Raw agent data from database:', data);
 
-      const transformedAgents = data.map((agent: any) => ({
-        ...agent,
-        tags: agent.agent_tags?.map((at: any) => at.tags.name) || [],
-        isActive: agent.is_active,
-        isSystem: false, // Temporarily set all agents as non-system until DB is fixed
-        pineconeIndex: agent.pinecone_index,
-        pineconeNamespace: agent.pinecone_namespace,
-        userId: agent.user_id,
-        createdAt: new Date(agent.created_at),
-        updatedAt: new Date(agent.updated_at),
-        trainingFiles: []
-      }));
+      const transformedAgents = data
+        .map((agent: any) => {
+          console.log('Processing agent:', agent.name);
+          console.log('Agent files:', agent.agent_files);
+          
+          return {
+            ...agent,
+            tags: agent.agent_tags?.map((at: any) => at.tags.name) || [],
+            isActive: agent.is_active,
+            isSystem: false,
+            pineconeIndex: agent.pinecone_index,
+            pineconeNamespace: agent.pinecone_namespace,
+            userId: agent.user_id,
+            createdAt: new Date(agent.created_at),
+            updatedAt: new Date(agent.updated_at),
+            trainingFiles: agent.agent_files?.map((file: any) => {
+              console.log('Processing file for agent:', file);
+              return {
+                type: file.type,
+                url: file.url,
+                name: file.name,
+                size: file.size
+              };
+            }) || []
+          };
+        })
+        .filter((agent: any) => agent.name !== 'PhD Knowledge Agent');
 
+      console.log('Transformed agents:', transformedAgents);
       setAgents(transformedAgents);
     } catch (error: any) {
       console.error('Error loading agents:', error);
@@ -211,8 +232,11 @@ export default function AgentsPage() {
       if (userError) throw userError;
       if (!user) throw new Error('No user found');
 
+      console.log('Creating agent with data:', data);
+      
       // Create the agent
       const agent = await createAgent(data, user.id);
+      console.log('Agent created:', agent);
       
       // Call the progress callback to indicate completion
       data.onProgress?.({ step: 'complete' });
@@ -233,6 +257,14 @@ export default function AgentsPage() {
         error: error.message || 'Failed to create agent'
       });
     }
+  };
+
+  // Add console log for when editing is initiated
+  const handleEdit = (agent: Agent) => {
+    console.log('Editing agent:', agent);
+    console.log('Agent training files:', agent.trainingFiles);
+    setEditingAgent(agent);
+    setShowCreateAgent(true);
   };
 
   if (loading) {
@@ -381,10 +413,7 @@ export default function AgentsPage() {
                 agent={agent}
                 onDelete={handleDelete}
                 onToggleActive={handleToggleActive}
-                onEdit={(agent) => {
-                  setEditingAgent(agent);
-                  setShowCreateAgent(true);
-                }}
+                onEdit={handleEdit}
               />
             ))}
             {agents.length === 0 && (

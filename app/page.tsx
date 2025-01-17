@@ -175,8 +175,8 @@ export default function HomePage() {
               </h1>
               
               <p className="text-xl sm:text-2xl text-teal-100/80">
-                Join a community of visionaries and builders creating the future together.
-                Your next big idea starts here.
+                Fairly redistribute risk across the innovation dynamic.
+                Join a community that believes in shared success and collective growth.
               </p>
             </motion.div>
 
@@ -239,10 +239,10 @@ export default function HomePage() {
           <FloatingCard>
             <div className="text-center mb-20">
               <h2 className="text-5xl font-bold text-white sm:text-6xl">
-                Create the Future
+                Demonstrate the Possibility of the Inconceivable
               </h2>
               <p className="mt-4 text-2xl text-teal-100/80">
-                Where visionaries become builders
+                Where visionaries become builders, and the unimaginable becomes reality.
               </p>
             </div>
 
@@ -378,7 +378,7 @@ export default function HomePage() {
                 Power Tools
               </h2>
               <p className="text-2xl text-teal-100/80">
-                Everything you need to build something amazing
+                Everything you need to build something amazing and redefine what's possible.
               </p>
             </div>
 
@@ -488,7 +488,7 @@ export default function HomePage() {
                 Community Vibes
               </h2>
               <p className="text-2xl text-teal-100/80">
-                Join a tribe of creative souls
+                Join a tribe of creative souls who dare to dream and build the inconceivable.
               </p>
             </div>
 

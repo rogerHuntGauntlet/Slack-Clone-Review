@@ -60,15 +60,50 @@ export function AgentModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) {
-      setName(agent?.name || '');
-      setDescription(agent?.description || '');
-      setSelectedFiles({
-        text: preloadedFiles.filter(f => f.type === 'text/plain'),
+    if (agent?.trainingFiles) {
+      console.log('Setting up existing training files:', agent.trainingFiles);
+      
+      // Convert training files to File objects
+      const filesByType: Record<FileType, File[]> = {
+        text: [],
         image: [],
         video: [],
         audio: []
+      };
+
+      agent.trainingFiles.forEach(file => {
+        console.log('Processing training file:', file);
+        // Create a new File object from the training file data
+        const blob = new Blob([''], { type: `${file.type}/${file.type}` });
+        const fileObj = new File([blob], file.name, {
+          type: `${file.type}/${file.type}`,
+          lastModified: new Date().getTime()
+        });
+        
+        // Add to the appropriate type array
+        if (file.type in filesByType) {
+          filesByType[file.type as FileType].push(fileObj);
+        }
       });
+
+      console.log('Processed files by type:', filesByType);
+      setSelectedFiles(filesByType);
+    }
+  }, [agent?.trainingFiles]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setName(agent?.name || '');
+      setDescription(agent?.description || '');
+      // Only reset files if we're not editing
+      if (!agent) {
+        setSelectedFiles({
+          text: preloadedFiles.filter(f => f.type === 'text/plain'),
+          image: [],
+          video: [],
+          audio: []
+        });
+      }
       setSelectedFileType(null);
       setSelectedFile(null);
       setTags(agent?.tags || []);

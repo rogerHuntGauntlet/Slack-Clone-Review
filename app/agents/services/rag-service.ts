@@ -56,10 +56,9 @@ export class AgentRAGService {
 
   private async getIndex() {
     try {
-      const indexName = process.env.PINECONE_INDEX_NAME;
-      if (!indexName) {
-        throw new Error('PINECONE_INDEX_NAME environment variable is not set');
-      }
+      // Use the specific agent-store index
+      const indexName = 'agent-store';
+      
       return pinecone.index(indexName);
     } catch (error: any) {
       throw new Error(`Failed to get Pinecone index: ${error.message}`);
@@ -195,7 +194,8 @@ export class AgentRAGService {
         body: JSON.stringify({
           agentId,
           query,
-          topK
+          topK,
+          index: 'agent-store'
         })
       });
 
@@ -218,7 +218,10 @@ export class AgentRAGService {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ agentId })
+        body: JSON.stringify({ 
+          agentId,
+          index: 'agent-store'
+        })
       });
 
       if (!response.ok) {
@@ -326,7 +329,8 @@ async function storeInPinecone({ vector, metadata, namespace }: {
     body: JSON.stringify({
       vector,
       metadata,
-      namespace
+      namespace,
+      index: 'agent-store'
     }),
   });
 

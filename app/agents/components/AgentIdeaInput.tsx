@@ -102,6 +102,95 @@ export function AgentIdeaInput({
   const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false);
   const [voiceChatStatus, setVoiceChatStatus] = useState<'inactive' | 'listening' | 'processing' | 'submitting'>('inactive');
   const [isConversationMode, setIsConversationMode] = useState(false);
+  const [hasShownWelcome, setHasShownWelcome] = useState(false);
+
+  const speakResponse = async (text: string) => {
+    if (!voiceServiceRef.current) {
+      console.error('Voice service not initialized. Please check your ElevenLabs API key.');
+      return;
+    }
+
+    try {
+      setIsPlayingVoice(true);
+      setIsAvatarSpeaking(true);
+      setAvatarEmotion('neutral');
+      
+      // Simplify the text first
+      const response = await fetch('/api/agents/simplify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content: "You are an AI that simplifies technical responses into natural, conversational language. Keep the key points but make it sound more human and brief (2-3 sentences max)."
+            },
+            {
+              role: "user",
+              content: `Please simplify this response into natural speech:\n\n${text}`
+            }
+          ]
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to simplify response');
+      }
+
+      const { text: simplifiedText } = await response.json();
+      
+      // Split text into sentences for more natural delivery
+      const sentences = simplifiedText.match(/[^.!?]+[.!?]+/g) || [simplifiedText];
+      
+      // Set avatar to speaking state before starting
+      setIsAvatarSpeaking(true);
+      setAvatarEmotion('neutral');
+      
+      for (const sentence of sentences) {
+        try {
+          const audioData = await voiceServiceRef.current.synthesizeSpeech(sentence.trim());
+          await voiceServiceRef.current.playAudio(audioData);
+          
+          // Small pause between sentences
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (error) {
+          console.error('Error processing sentence:', sentence, error);
+        }
+      }
+
+      // After all sentences, show happy emotion
+      setAvatarEmotion('happy');
+    } catch (error) {
+      console.error('Error playing voice:', error);
+      setAvatarEmotion('surprised');
+    } finally {
+      setIsPlayingVoice(false);
+      setIsAvatarSpeaking(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!hasShownWelcome) {
+      setHasShownWelcome(true);
+      setMessages([{
+        id: 'welcome',
+        role: 'assistant',
+        content: `Hi there! 👋 I'm your AI assistant, ready to help you create your own AI agent. Here's how to get the most out of our interaction:
+
+### How to Use This Tool
+- Share your agent idea in the text box below - be as detailed as you can!
+- I'll evaluate your idea and provide expert feedback
+- You can use voice chat (microphone icon) or upload files (paperclip icon)
+- Once we refine your idea, click "Create my agent" to bring it to life
+
+I'm excited to help you build something amazing! What kind of agent would you like to create?`,
+        status: 'done'
+      }]);
+      
+      // Only trigger speech once, which will handle the avatar animation
+      speakResponse(`Hi there! I'm your AI assistant, ready to help you create your own AI agent. Share your idea in the text box below, and I'll help you bring it to life!`);
+    }
+  }, [speakResponse]);
 
   useEffect(() => {
     if (agentId) {
@@ -478,28 +567,34 @@ ${chatLog}`;
             recognition.stop();
             onChange(finalTranscript);
             
-            // Add a small delay before countdown to show "Processing..." state
-            setTimeout(() => {
-              setVoiceChatStatus('submitting');
-              setCountdown(3);
-              
-              let count = 3;
-              const countdownInterval = setInterval(() => {
-                count--;
-                setCountdown(count);
-                if (count === 0) {
-                  clearInterval(countdownInterval);
-                  const submitButton = document.querySelector('button[type="submit"]') as HTMLButtonElement;
-                  if (submitButton) {
-                    submitButton.click();
-                  } else {
-                    handleSubmit();
+            // Only proceed with evaluation if we have actual content
+            if (finalTranscript.trim().length > 5) {
+              // Add a small delay before countdown to show "Processing..." state
+              setTimeout(() => {
+                setVoiceChatStatus('submitting');
+                setCountdown(3);
+                
+                let count = 3;
+                const countdownInterval = setInterval(() => {
+                  count--;
+                  setCountdown(count);
+                  if (count === 0) {
+                    clearInterval(countdownInterval);
+                    const submitButton = document.querySelector('button[type="submit"]') as HTMLButtonElement;
+                    if (submitButton) {
+                      submitButton.click();
+                    } else {
+                      handleSubmit();
+                    }
+                    setCountdown(null);
+                    setVoiceChatStatus('inactive');
                   }
-                  setCountdown(null);
-                  setVoiceChatStatus('inactive');
-                }
-              }, 1000);
-            }, 500);
+                }, 1000);
+              }, 500);
+            } else {
+              setVoiceChatStatus('inactive');
+              setTranscription('');
+            }
           }
         }, 2000); // Reduced silence time to 2 seconds for better responsiveness
       };
@@ -596,66 +691,6 @@ ${chatLog}`;
       console.error('ElevenLabs API key not found in environment variables');
     }
   }, []);
-
-  const speakResponse = async (text: string) => {
-    if (!voiceServiceRef.current) {
-      console.error('Voice service not initialized. Please check your ElevenLabs API key.');
-      return;
-    }
-
-    try {
-      setIsPlayingVoice(true);
-      setIsAvatarSpeaking(true);
-      setAvatarEmotion('neutral');
-      
-      // Simplify the text first
-      const response = await fetch('/api/agents/simplify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: "system",
-              content: "You are an AI that simplifies technical responses into natural, conversational language. Keep the key points but make it sound more human and brief (2-3 sentences max)."
-            },
-            {
-              role: "user",
-              content: `Please simplify this response into natural speech:\n\n${text}`
-            }
-          ]
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to simplify response');
-      }
-
-      const { text: simplifiedText } = await response.json();
-      
-      // Split text into sentences for more natural delivery
-      const sentences = simplifiedText.match(/[^.!?]+[.!?]+/g) || [simplifiedText];
-      
-      for (const sentence of sentences) {
-        try {
-          const audioData = await voiceServiceRef.current.synthesizeSpeech(sentence.trim());
-          await voiceServiceRef.current.playAudio(audioData);
-          
-          // Small pause between sentences
-          await new Promise(resolve => setTimeout(resolve, 300));
-        } catch (error) {
-          console.error('Error processing sentence:', sentence, error);
-        }
-      }
-
-      setAvatarEmotion('happy');
-    } catch (error) {
-      console.error('Error playing voice:', error);
-      setAvatarEmotion('surprised');
-    } finally {
-      setIsPlayingVoice(false);
-      setIsAvatarSpeaking(false);
-    }
-  };
 
   // Use ElevenLabs voice when evaluation changes
   useEffect(() => {
@@ -761,25 +796,6 @@ ${chatLog}`;
                     }
                   })}
                 </div>
-                {message.role === 'assistant' && message.status === 'done' && (
-                  <button
-                    onClick={toggleSpeech}
-                    className={`p-1.5 rounded-full ${
-                      isPlayingVoice 
-                        ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30' 
-                        : 'bg-purple-500/20 text-purple-500 hover:bg-purple-500/30'
-                    }`}
-                    title={isPlayingVoice ? 'Stop speaking' : 'Speak response'}
-                  >
-                    {isPlayingVoice ? (
-                      <XMarkIcon className="h-4 w-4" />
-                    ) : (
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                      </svg>
-                    )}
-                  </button>
-                )}
               </div>
               {isLoading(message.status) && (
                 <div className="flex flex-col gap-2">
