@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { User, ChevronDown, ChevronRight } from 'lucide-react'
+import { User, ChevronDown, ChevronRight, Edit2, Loader2 } from 'lucide-react'
 import { supabase, getWorkspaceUsers, createUserProfile } from '../lib/supabase'
 import Link from 'next/link'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
@@ -59,6 +59,7 @@ export default function CollapsibleDMList({
   onCollapsedChange 
 }: DMListProps) {
   const [internalIsCollapsed, setInternalIsCollapsed] = useState(false)
+  const [isTransitioning, setIsTransitioning] = useState(false)
   const [sections, setSections] = useState<Section[]>([
     { title: 'System Users', users: [], isCollapsed: false },
     { title: 'My Agents', users: [], isCollapsed: false },
@@ -307,6 +308,11 @@ export default function CollapsibleDMList({
     )
   }
 
+  const handleEditClick = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent collapse
+    setIsTransitioning(true)
+  }
+
   return (
     <>
       <style jsx>{`
@@ -355,9 +361,14 @@ export default function CollapsibleDMList({
                     {section.title === 'My Agents' && (
                       <Link
                         href="/agents"
-                        className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs bg-gray-700 hover:bg-gray-600 rounded"
+                        onClick={handleEditClick}
+                        className="ml-2 inline-flex items-center justify-center w-5 h-5 text-gray-300 hover:text-white"
                       >
-                        +
+                        {isTransitioning ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Edit2 size={16} />
+                        )}
                       </Link>
                     )}
                   </span>

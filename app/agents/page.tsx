@@ -179,6 +179,8 @@ export default function AgentsPage() {
   };
 
   const handleCreateAgentFromChat = (chatLog: string) => {
+    console.log('Starting handleCreateAgentFromChat with chat log length:', chatLog.length);
+    
     // Extract metadata if present
     let name = '';
     let description = '';
@@ -187,32 +189,33 @@ export default function AgentsPage() {
     const metadataMatch = chatLog.match(/\[AGENT_METADATA\]([\s\S]*?)\[\/AGENT_METADATA\]/);
     if (metadataMatch) {
       try {
+        console.log('Found metadata section:', metadataMatch[1]);
         const metadata = JSON.parse(metadataMatch[1]);
         name = metadata.name;
         description = metadata.description;
         // Remove the metadata section from the chat log
         cleanedChatLog = chatLog.replace(/\[AGENT_METADATA\][\s\S]*?\[\/AGENT_METADATA\]\n\n/, '');
+        console.log('Cleaned chat log length:', cleanedChatLog.length);
       } catch (e) {
         console.error('Failed to parse agent metadata:', e);
       }
     }
 
+    console.log('Creating chat log file...');
     // Create a new File object from the cleaned chat log
     const chatLogFile = new File(
       [cleanedChatLog],
       'agent_evaluation.txt',
       { type: 'text/plain' }
     );
+    console.log('Created file:', { name: chatLogFile.name, type: chatLogFile.type, size: chatLogFile.size });
     
     setChatLogForAgent(cleanedChatLog);
-    setShowCreateAgent(true);
-    setShowPhdEvaluator(false);
-
-    // Store the file for use in handleCreateAgent
+    console.log('Setting preloaded files...');
     setPreloadedFiles([chatLogFile]);
-
+    
     // Pre-populate the form with metadata
-    setEditingAgent({
+    const newAgent = {
       id: '',  // Will be set by the database
       name: name || '',
       description: description || '',
@@ -223,20 +226,38 @@ export default function AgentsPage() {
       userId: '',  // Will be set during creation
       createdAt: new Date(),
       updatedAt: new Date()
-    });
+    };
+    console.log('Setting editing agent:', newAgent);
+    setEditingAgent(newAgent);
+    
+    setShowPhdEvaluator(false);
+    setShowCreateAgent(true);
   };
 
   const handleCreateAgent = async (data: CreateAgentDTO) => {
+    console.log('Starting handleCreateAgent with data:', {
+      name: data.name,
+      description: data.description,
+      files: data.files?.map(f => ({ name: f.name, type: f.type, size: f.size })) || []
+    });
+    
+    if (!data.files || data.files.length === 0) {
+      console.error('No files provided to handleCreateAgent');
+      data.onProgress?.({ 
+        step: 'database',
+        error: 'No training files provided'
+      });
+      return;
+    }
+
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!user) throw new Error('No user found');
 
-      console.log('Creating agent with data:', data);
-      
       // Create the agent
       const agent = await createAgent(data, user.id);
-      console.log('Agent created:', agent);
+      console.log('Agent created successfully:', agent);
       
       // Call the progress callback to indicate completion
       data.onProgress?.({ step: 'complete' });
@@ -245,10 +266,12 @@ export default function AgentsPage() {
       await loadAgents();
       
       // Reset state and close modal
+      console.log('Resetting state...');
       setShowCreateAgent(false);
       setChatLogForAgent('');
       setEditingAgent(undefined);
       setPreloadedFiles([]);
+      console.log('State reset complete');
       
     } catch (error: any) {
       console.error('Error creating agent:', error);

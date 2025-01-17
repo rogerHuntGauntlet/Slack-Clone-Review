@@ -64,8 +64,9 @@ export async function middleware(req: NextRequest) {
   // Handle auth redirects
   const isAuthPage = req.nextUrl.pathname.startsWith('/auth')
   const isAccessPage = req.nextUrl.pathname.startsWith('/access')
-  
-  if (!session && !isAuthPage && !req.nextUrl.pathname.startsWith('/api')) {
+  const isRootPage = req.nextUrl.pathname === '/'
+
+  if (!session && !isAuthPage && !isRootPage && !req.nextUrl.pathname.startsWith('/api')) {
     // Redirect to login if no session
     const redirectUrl = new URL('/auth', req.url)
     redirectUrl.searchParams.set('redirectTo', req.nextUrl.pathname)

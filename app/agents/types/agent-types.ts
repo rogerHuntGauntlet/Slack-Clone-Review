@@ -5,6 +5,7 @@ export interface TrainingFile {
   url: string;
   name: string;
   size: number;
+  content?: string;
 }
 
 export interface Agent {

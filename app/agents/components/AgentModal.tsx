@@ -46,7 +46,7 @@ export function AgentModal({
   const [name, setName] = useState(agent?.name || '');
   const [description, setDescription] = useState(agent?.description || '');
   const [selectedFiles, setSelectedFiles] = useState<Record<FileType, File[]>>({
-    text: preloadedFiles.filter(f => f.type === 'text/plain'),
+    text: [],
     image: [],
     video: [],
     audio: []
@@ -60,56 +60,105 @@ export function AgentModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (agent?.trainingFiles) {
-      console.log('Setting up existing training files:', agent.trainingFiles);
-      
-      // Convert training files to File objects
-      const filesByType: Record<FileType, File[]> = {
+    if (!isOpen) {
+      console.log('Modal closed, resetting state');
+      setName(agent?.name || '');
+      setDescription(agent?.description || '');
+      setSelectedFiles({
         text: [],
         image: [],
         video: [],
         audio: []
-      };
-
-      agent.trainingFiles.forEach(file => {
-        console.log('Processing training file:', file);
-        // Create a new File object from the training file data
-        const blob = new Blob([''], { type: `${file.type}/${file.type}` });
-        const fileObj = new File([blob], file.name, {
-          type: `${file.type}/${file.type}`,
-          lastModified: new Date().getTime()
-        });
-        
-        // Add to the appropriate type array
-        if (file.type in filesByType) {
-          filesByType[file.type as FileType].push(fileObj);
-        }
       });
-
-      console.log('Processed files by type:', filesByType);
-      setSelectedFiles(filesByType);
-    }
-  }, [agent?.trainingFiles]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setName(agent?.name || '');
-      setDescription(agent?.description || '');
-      // Only reset files if we're not editing
-      if (!agent) {
-        setSelectedFiles({
-          text: preloadedFiles.filter(f => f.type === 'text/plain'),
-          image: [],
-          video: [],
-          audio: []
-        });
-      }
       setSelectedFileType(null);
       setSelectedFile(null);
       setTags(agent?.tags || []);
       setSuggestedTags([]);
       setProgress(null);
       setIsSubmitting(false);
+    } else {
+      console.log('Modal opened', {
+        isEditing: !!agent,
+        hasPreloadedFiles: preloadedFiles && preloadedFiles.length > 0,
+        preloadedFiles: preloadedFiles?.map(f => ({ name: f.name, type: f.type, size: f.size }))
+      });
+
+      // Initialize files when modal opens
+      const initialFiles: Record<FileType, File[]> = {
+        text: [],
+        image: [],
+        video: [],
+        audio: []
+      };
+
+      // First, add any preloaded files (these come from the chat)
+      if (preloadedFiles && preloadedFiles.length > 0) {
+        console.log('Processing preloaded files from chat...');
+        preloadedFiles.forEach(async file => {
+          console.log('Processing preloaded file:', { name: file.name, type: file.type, size: file.size });
+          if (file.type === 'text/plain') {
+            // Read the file content
+            const content = await file.text();
+            const blob = new Blob([content], { type: 'text/plain' });
+            const fileWithContent = new File([blob], file.name, {
+              type: 'text/plain',
+              lastModified: new Date().getTime()
+            });
+            initialFiles.text.push(fileWithContent);
+          }
+        });
+      }
+
+      // Then, if we're editing, add any existing training files
+      if (agent?.trainingFiles) {
+        console.log('Processing existing training files:', agent.trainingFiles);
+        agent.trainingFiles.forEach(async file => {
+          console.log('Processing training file:', file);
+          // For text files, we need to create a proper blob with content
+          if (file.type === 'text') {
+            try {
+              // Fetch the file content from the URL
+              const response = await fetch(file.url);
+              const content = await response.text();
+              
+              const blob = new Blob([content], { type: 'text/plain' });
+              const fileObj = new File([blob], file.name, {
+                type: 'text/plain',
+                lastModified: new Date().getTime()
+              });
+              initialFiles.text.push(fileObj);
+            } catch (error) {
+              console.error('Failed to fetch file content:', error);
+              // Create an empty file as fallback
+              const blob = new Blob([''], { type: 'text/plain' });
+              const fileObj = new File([blob], file.name, {
+                type: 'text/plain',
+                lastModified: new Date().getTime()
+              });
+              initialFiles.text.push(fileObj);
+            }
+          } else {
+            // For other types, create with empty content for now
+            const blob = new Blob([''], { type: `${file.type}/${file.type}` });
+            const fileObj = new File([blob], file.name, {
+              type: `${file.type}/${file.type}`,
+              lastModified: new Date().getTime()
+            });
+            const fileType = file.type as FileType;
+            if (fileType in initialFiles) {
+              initialFiles[fileType].push(fileObj);
+            }
+          }
+        });
+      }
+
+      console.log('Setting initial files:', {
+        textFiles: initialFiles.text.map(f => ({ name: f.name, type: f.type, size: f.size })),
+        imageFiles: initialFiles.image.length,
+        videoFiles: initialFiles.video.length,
+        audioFiles: initialFiles.audio.length
+      });
+      setSelectedFiles(initialFiles);
     }
   }, [isOpen, agent, preloadedFiles]);
 
@@ -146,7 +195,10 @@ export function AgentModal({
     setIsSubmitting(true);
     
     try {
+      console.log('Submitting form with files:', selectedFiles);
       const allFiles = Object.values(selectedFiles).flat();
+      console.log('All files to submit:', allFiles.map(f => ({ name: f.name, type: f.type, size: f.size })));
+      
       await onSubmit({
         name,
         description,
@@ -164,6 +216,7 @@ export function AgentModal({
         }
       });
     } catch (error) {
+      console.error('Error submitting form:', error);
       setIsSubmitting(false);
     }
   };
@@ -232,7 +285,7 @@ export function AgentModal({
                 <div className="h-full flex divide-x divide-gray-700">
                   {/* Metadata Column */}
                   <div className="w-1/3 h-full flex flex-col">
-                    <div className="p-6">
+                    <div className="flex-1 overflow-y-auto p-6">
                       <Dialog.Title as="h3" className="text-xl font-semibold leading-6 text-white mb-6 flex items-center gap-2">
                         {isCreatingFromTemplate && <SparklesIcon className="h-6 w-6 text-indigo-400" />}
                         {isCreatingFromTemplate ? 'Create from Template' : agent ? 'Edit Agent' : 'Create Agent'}
@@ -291,6 +344,7 @@ export function AgentModal({
                           </p>
                         </div>
 
+                        {/* Tags Section */}
                         <div className="bg-gray-900 rounded-lg p-4">
                           <div className="flex items-center justify-between mb-2">
                             <label className="block text-sm font-medium text-gray-300">
@@ -485,39 +539,29 @@ export function AgentModal({
                     </div>
                   )}
                   
-                  <div className="flex justify-between gap-3">
+                  <div className="flex justify-end gap-3">
                     <button
                       type="button"
-                      onClick={handleClearForm}
                       className="inline-flex justify-center rounded-md bg-gray-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
+                      onClick={onClose}
                     >
-                      Clear Form
+                      Cancel
                     </button>
-
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        className="inline-flex justify-center rounded-md bg-gray-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
-                        onClick={onClose}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-                        onClick={handleSubmit}
-                        disabled={isSubmitting}
-                      >
-                        {isSubmitting ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            <span className="ml-2">Creating...</span>
-                          </>
-                        ) : (
-                          'Create Agent'
-                        )}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                      onClick={handleSubmit}
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span className="ml-2">{agent ? 'Updating...' : 'Creating...'}</span>
+                        </>
+                      ) : (
+                        agent ? 'Update Agent' : 'Create Agent'
+                      )}
+                    </button>
                   </div>
                 </div>
               </Dialog.Panel>

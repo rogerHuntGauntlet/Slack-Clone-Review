@@ -7,6 +7,7 @@ import { VoiceService } from '@/services/voice-service';
 interface SpeechRecognitionBase extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
+  lang: string;
   onresult: (event: SpeechRecognitionEvent) => void;
   onerror: (event: SpeechRecognitionErrorEvent) => void;
   onend?: ((this: SpeechRecognition, ev: Event) => any) | null;
@@ -14,13 +15,9 @@ interface SpeechRecognitionBase extends EventTarget {
   stop: () => void;
 }
 
-interface SpeechRecognition extends SpeechRecognitionBase {
-  lang: string;
-}
+interface SpeechRecognition extends SpeechRecognitionBase {}
 
-interface WebkitSpeechRecognition extends SpeechRecognitionBase {
-  lang: string;
-}
+interface WebkitSpeechRecognition extends SpeechRecognitionBase {}
 
 declare global {
   interface Window {
@@ -97,7 +94,7 @@ export function AgentIdeaInput({
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isPlayingVoice, setIsPlayingVoice] = useState(false);
   const voiceServiceRef = useRef<VoiceService | null>(null);
-  const [isAvatarVisible, setIsAvatarVisible] = useState(true);
+  const [isAvatarVisible, setIsAvatarVisible] = useState(false);
   const [avatarEmotion, setAvatarEmotion] = useState<'neutral' | 'happy' | 'thinking' | 'surprised'>('neutral');
   const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false);
   const [voiceChatStatus, setVoiceChatStatus] = useState<'inactive' | 'listening' | 'processing' | 'submitting'>('inactive');
@@ -186,11 +183,18 @@ export function AgentIdeaInput({
 I'm excited to help you build something amazing! What kind of agent would you like to create?`,
         status: 'done'
       }]);
-      
-      // Only trigger speech once, which will handle the avatar animation
-      speakResponse(`Hi there! I'm your AI assistant, ready to help you create your own AI agent. Share your idea in the text box below, and I'll help you bring it to life!`);
     }
-  }, [speakResponse]);
+  }, [hasShownWelcome]);
+
+  useEffect(() => {
+    if (hasShownWelcome && !isAvatarVisible) {
+      // Small delay before showing avatar and starting speech
+      setTimeout(() => {
+        setIsAvatarVisible(true);
+        speakResponse(`Hi there! I'm your AI assistant, ready to help you create your own AI agent. Share your idea in the text box below, and I'll help you bring it to life!`);
+      }, 500);
+    }
+  }, [hasShownWelcome]);
 
   useEffect(() => {
     if (agentId) {
@@ -288,15 +292,23 @@ I'm excited to help you build something amazing! What kind of agent would you li
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.log('No file selected');
+      return;
+    }
+
+    console.log('File selected:', { name: file.name, type: file.type, size: file.size });
 
     try {
       if (file.type.startsWith('text/')) {
+        console.log('Processing text file directly');
         const text = await file.text();
+        console.log('Text file contents:', text.substring(0, 100) + '...');
         onChange(text);
         return;
       }
 
+      console.log('Processing non-text file through extract-text API');
       const formData = new FormData();
       formData.append('file', file);
 
@@ -305,14 +317,18 @@ I'm excited to help you build something amazing! What kind of agent would you li
         body: formData,
       });
 
+      console.log('Extract text API response:', { status: response.status, ok: response.ok });
+
       if (!response.ok) {
         throw new Error('Failed to extract text from file');
       }
 
       const { text } = await response.json();
+      console.log('Extracted text:', text.substring(0, 100) + '...');
       onChange(text);
     } catch (err: any) {
       const errorMsg = err.message || 'Failed to process file';
+      console.error('File processing error:', err);
       setError(errorMsg);
       onError?.(errorMsg);
     }
@@ -324,27 +340,22 @@ I'm excited to help you build something amazing! What kind of agent would you li
       setMessages(prev => {
         const lastMessage = prev[prev.length - 1];
         
-        // If there's no message or the last message is from the user, create a new assistant message
-        if (!lastMessage || lastMessage.role === 'user') {
-          return [...prev, {
-            id: 'assistant-response',
-            role: 'assistant',
-            content: evaluation,
-            status: 'done'
-          }];
+        // If the last message is from the assistant and not done, update it
+        if (lastMessage?.role === 'assistant' && lastMessage.status !== 'done') {
+          return prev.map(msg => 
+            msg.id === lastMessage.id 
+              ? { ...msg, content: evaluation }
+              : msg
+          );
         }
         
-        // Otherwise, update the existing assistant message
-        return prev.map((msg, index) => {
-          if (index === prev.length - 1) {
-            return {
-              ...msg,
-              content: evaluation,
-              status: 'done'
-            };
-          }
-          return msg;
-        });
+        // Otherwise, create a new assistant message
+        return [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: evaluation,
+          status: 'done'
+        }];
       });
     }
   }, [evaluation]);
@@ -366,83 +377,29 @@ I'm excited to help you build something amazing! What kind of agent would you li
 
     // Add user message
     const userMessageId = Date.now().toString();
-    setMessages(prev => [...prev, {
-      id: userMessageId,
-      role: 'user',
-      content: value,
-      status: 'done'
-    }]);
+    const assistantMessageId = Date.now() + 1;
 
-    if (!isConversationMode) {
-      // Initial RAG evaluation
-      setMessages(prev => [...prev, {
-        id: 'thinking',
+    setMessages(prev => [
+      ...prev,
+      {
+        id: userMessageId,
+        role: 'user',
+        content: value,
+        status: 'done'
+      },
+      {
+        id: assistantMessageId.toString(),
         role: 'assistant',
         content: '',
-        status: 'searching',
-        statusMessage: 'Searching knowledge base for relevant information...'
-      }]);
-
-      setTimeout(() => {
-        setMessages(prev => {
-          const filtered = prev.filter(m => m.id !== 'thinking');
-          return [...filtered, {
-            id: 'thinking',
-            role: 'assistant',
-            content: '',
-            status: 'analyzing',
-            statusMessage: 'Analyzing context and formulating expert evaluation...'
-          }];
-        });
-      }, 3000);
-
-      setTimeout(() => {
-        setMessages(prev => {
-          const filtered = prev.filter(m => m.id !== 'thinking');
-          return [...filtered, {
-            id: 'thinking',
-            role: 'assistant',
-            content: '',
-            status: 'writing',
-            statusMessage: 'Writing comprehensive evaluation and recommendations...'
-          }];
-        });
-      }, 6000);
-
-      onEvaluate();
-    } else {
-      // Conversation mode - simpler loading state
-      setMessages(prev => [...prev, {
-        id: 'thinking',
-        role: 'assistant',
-        content: '',
-        status: 'writing',
-        statusMessage: 'Thinking...'
-      }]);
-
-      // Use chat service directly
-      if (chatServiceRef.current) {
-        chatServiceRef.current.chat(value).then(response => {
-          setMessages(prev => {
-            const filtered = prev.filter(m => m.id !== 'thinking');
-            return [...filtered, {
-              id: Date.now().toString(),
-              role: 'assistant',
-              content: response,
-              status: 'done'
-            }];
-          });
-        }).catch(err => {
-          console.error('Chat error:', err);
-          setError('Failed to get response. Please try again.');
-          onError?.('Failed to get response. Please try again.');
-          // Remove thinking message
-          setMessages(prev => prev.filter(m => m.id !== 'thinking'));
-        });
+        status: 'writing'
       }
-    }
-    
-    onChange(''); // Clear the input after submission
+    ]);
+
+    // Clear input after submission
+    onChange('');
+
+    // Call onEvaluate to get the evaluation
+    onEvaluate();
   };
 
   // Check if message is in a loading state
@@ -451,26 +408,40 @@ I'm excited to help you build something amazing! What kind of agent would you li
   };
 
   const formatChatLogForAgent = () => {
-    return messages.map(msg => {
-      if (msg.role === 'user') {
-        return `User Input:\n${msg.content}\n`;
-      } else if (msg.role === 'assistant' && msg.status === 'done') {
-        return `Expert Evaluation:\n${msg.content}\n`;
-      }
+    // Filter out welcome message and any incomplete messages
+    const relevantMessages = messages.filter(msg => 
+      msg.id !== 'welcome' && 
+      msg.status === 'done'
+    );
+
+    if (relevantMessages.length === 0) {
       return '';
-    }).join('\n---\n\n');
+    }
+
+    return relevantMessages
+      .map(msg => {
+        if (msg.role === 'user') {
+          return `User Input:\n${msg.content}\n`;
+        } else {
+          return `Expert Evaluation:\n${msg.content}\n`;
+        }
+      })
+      .join('\n---\n\n');
   };
 
   const handleCreateAgent = async () => {
+    console.log('Starting handleCreateAgent');
     const chatLog = formatChatLogForAgent();
     if (!chatLog.trim()) {
       console.error('No chat content available');
       return;
     }
 
+    console.log('Chat log formatted:', chatLog.substring(0, 100) + '...');
     setIsGeneratingMetadata(true);
 
     try {
+      console.log('Generating metadata...');
       const response = await fetch('/api/agents/generate-metadata', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -493,30 +464,71 @@ Make the name and description engaging but professional.`
         }),
       });
 
+      console.log('Metadata API response:', { status: response.status, ok: response.ok });
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to generate agent metadata');
       }
 
       const metadata = await response.json();
+      console.log('Generated metadata:', metadata);
       
-      // Add metadata to the chat log with a special format that can be parsed by the parent
       const enhancedChatLog = `[AGENT_METADATA]
 {
-  "name": "${metadata.name}",
-  "description": "${metadata.description}"
+  "name": "${metadata.name.replace(/"/g, '\\"')}",
+  "description": "${metadata.description.replace(/"/g, '\\"')}"
 }
 [/AGENT_METADATA]
 
 ${chatLog}`;
 
-      onCreateAgent?.(enhancedChatLog);
-    } catch (error) {
-      console.error('Error generating agent metadata:', error);
-      // Fallback to basic chat log if metadata generation fails
-      onCreateAgent?.(chatLog);
-    } finally {
+      console.log('Enhanced chat log created');
+
+      // Reset all state before calling onCreateAgent
+      console.log('Resetting state...');
+      setMessages([]);
+      onChange('');
+      setIsConversationMode(false);
+      setHasShownWelcome(false);
+      setIsAvatarVisible(false);
+      setAvatarEmotion('neutral');
+      setIsAvatarSpeaking(false);
+      if (chatServiceRef.current) {
+        chatServiceRef.current.setRagMode(true);
+      }
       setIsGeneratingMetadata(false);
+      console.log('State reset complete');
+
+      // Small delay to ensure state updates are processed
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Call onCreateAgent after state is reset
+      console.log('Calling onCreateAgent...');
+      onCreateAgent?.(enhancedChatLog);
+      console.log('onCreateAgent called');
+
+    } catch (error) {
+      console.error('Error in handleCreateAgent:', error);
+      // Reset state even if there's an error
+      setMessages([]);
+      onChange('');
+      setIsConversationMode(false);
+      setHasShownWelcome(false);
+      setIsAvatarVisible(false);
+      setAvatarEmotion('neutral');
+      setIsAvatarSpeaking(false);
+      if (chatServiceRef.current) {
+        chatServiceRef.current.setRagMode(true);
+      }
+      setIsGeneratingMetadata(false);
+      
+      // Small delay to ensure state updates are processed
+      await new Promise(resolve => setTimeout(resolve, 0));
+      
+      // Fallback to basic chat log if metadata generation fails
+      console.log('Falling back to basic chat log');
+      onCreateAgent?.(chatLog);
     }
   };
 
@@ -739,9 +751,11 @@ ${chatLog}`;
 
   return (
     <div className="flex flex-col h-[600px] relative">
-      {/* Avatar Overlay */}
-      {isAvatarVisible && (
-        <div className="absolute top-4 right-4 w-[300px] z-50">
+      {/* Avatar Overlay with transition */}
+      <div className={`absolute top-4 right-4 w-[300px] z-50 transition-all duration-500 ease-in-out transform ${
+        isAvatarVisible ? 'translate-y-0 opacity-100' : '-translate-y-4 opacity-0'
+      }`}>
+        {isAvatarVisible && (
           <div className="relative">
             <button
               onClick={() => setIsAvatarVisible(false)}
@@ -754,14 +768,14 @@ ${chatLog}`;
               emotion={avatarEmotion}
             />
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Toggle Avatar Button (when hidden) */}
       {!isAvatarVisible && (
         <button
           onClick={() => setIsAvatarVisible(true)}
-          className="absolute top-4 right-4 p-2 rounded-full bg-purple-600 hover:bg-purple-500 text-white z-50"
+          className="absolute top-4 right-4 p-2 rounded-full bg-purple-600 hover:bg-purple-500 text-white z-50 transition-all duration-300 ease-in-out transform hover:scale-105"
           title="Show AI Avatar"
         >
           <VideoCameraIcon className="h-6 w-6" />

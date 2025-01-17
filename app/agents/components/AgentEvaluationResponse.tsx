@@ -168,6 +168,7 @@ export function AgentEvaluationResponse({ evaluation, onAskFollowUp, isLoading =
   const [focusedSectionIndex, setFocusedSectionIndex] = useState<number>(-1);
   const [error, setError] = useState<ValidationError | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [currentEvaluation, setCurrentEvaluation] = useState('');
   
   const containerRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -188,32 +189,60 @@ export function AgentEvaluationResponse({ evaluation, onAskFollowUp, isLoading =
     setError(validationError);
   }, [evaluation]);
 
+  // Update current evaluation when streaming
+  useEffect(() => {
+    if (evaluation) {
+      setCurrentEvaluation(evaluation);
+    }
+  }, [evaluation]);
+
   // Memoize section parsing logic
   const sections = useMemo(() => {
     try {
       if (error?.type === 'error') return [];
 
-      return evaluation.split('\n').reduce((acc: Section[], line: string) => {
+      // Split the evaluation into sections
+      const lines = currentEvaluation.split('\n');
+      let currentSection: Section | null = null;
+      const parsedSections: Section[] = [];
+
+      for (const line of lines) {
         if (line.startsWith('###') || line.match(/^[A-Z][^a-z]*:/)) {
+          // If we find a section header, create a new section
           const title = line.replace(/^###\s*/, '').replace(':', '').trim();
-          if (!title) throw new Error('Empty section title found');
-          
-          acc.push({
-            title,
-            content: [],
-            icon: getSectionIcon(title)
-          });
-        } else if (line.trim() && acc.length > 0) {
-          acc[acc.length - 1].content.push(line.trim());
+          if (title) {
+            currentSection = {
+              title,
+              content: [],
+              icon: getSectionIcon(title)
+            };
+            parsedSections.push(currentSection);
+          }
+        } else if (line.trim() && currentSection) {
+          // Add non-empty lines to the current section
+          currentSection.content.push(line.trim());
         }
-        return acc;
-      }, []);
+      }
+
+      // If we have no sections but have content, create a default section
+      if (parsedSections.length === 0 && currentEvaluation.trim()) {
+        return [{
+          title: 'Evaluation',
+          content: currentEvaluation.split('\n').filter(line => line.trim()),
+          icon: getSectionIcon('Initial Assessment')
+        }];
+      }
+
+      return parsedSections;
     } catch (error) {
-      const e = error as Error;
-      setError({ message: e.message || 'Failed to parse sections', type: 'error' });
-      return [];
+      console.error('Error parsing sections:', error);
+      return [{
+        title: 'Evaluation',
+        content: currentEvaluation.split('\n').filter(line => line.trim()),
+        icon: getSectionIcon('Initial Assessment')
+      }];
     }
-  }, [evaluation, error?.type]);
+  }, [currentEvaluation, error?.type]);
 
   // Debounced section toggle
   const debouncedToggleSection = useCallback(
