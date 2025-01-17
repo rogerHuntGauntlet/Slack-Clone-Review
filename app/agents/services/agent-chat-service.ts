@@ -29,138 +29,145 @@ interface DatabaseMessage {
   timestamp: string
 }
 
-export async function sendMessageToAgent(
-  agentId: string,
-  message: string,
-  pineconeNamespace?: string,
-  onStream?: (chunk: string) => void
-): Promise<AgentChatResponse> {
-  const supabase = createClientComponentClient()
+export class AgentChatService {
+  private agentId: string;
+  private supabase: any;
+  private ragMode: boolean = true;
 
-  try {
-    // First, validate the agent exists and is active
-    const { data: agent, error: agentError } = await supabase
-      .from('agents')
-      .select('*')
-      .eq('id', agentId)
-      .eq('is_active', true)
-      .single()
+  constructor(agentId: string) {
+    this.agentId = agentId;
+    this.supabase = createClientComponentClient();
+  }
 
-    if (agentError || !agent) {
-      throw new Error('Agent not found or inactive')
-    }
+  setRagMode(enabled: boolean) {
+    this.ragMode = enabled;
+  }
 
-    // Determine which endpoint to use based on whether Pinecone is set up
-    const endpoint = agent.pinecone_namespace
-      ? '/api/agents/rag-chat'
-      : '/api/agents/chat';
+  async chat(message: string, onStream?: (chunk: string) => void): Promise<AgentChatResponse> {
+    try {
+      // First, validate the agent exists and is active
+      const { data: agent, error: agentError } = await this.supabase
+        .from('agents')
+        .select('*')
+        .eq('id', this.agentId)
+        .eq('is_active', true)
+        .single()
 
-    // Call the appropriate endpoint
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        agentId,
-        message,
-        pineconeNamespace: agent.pinecone_namespace,
-        stream: !!onStream
-      }),
-    });
+      if (agentError || !agent) {
+        throw new Error('Agent not found or inactive')
+      }
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to get response from agent');
-    }
+      // Determine which endpoint to use based on whether Pinecone is set up and RAG mode
+      const endpoint = (agent.pinecone_namespace && this.ragMode)
+        ? '/api/agents/rag-chat'
+        : '/api/agents/chat';
 
-    // Handle streaming response
-    if (onStream && response.headers.get('content-type')?.includes('text/event-stream')) {
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let fullMessage = '';
+      // Call the appropriate endpoint
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: this.agentId,
+          message,
+          pineconeNamespace: agent.pinecone_namespace,
+          stream: !!onStream
+        }),
+      });
 
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          // Decode the chunk and add to buffer
-          buffer += decoder.decode(value, { stream: true });
-          
-          // Process complete SSE messages
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(5).trim(); // Remove 'data: ' prefix and whitespace
-              
-              // Check if it's the end marker
-              if (data === '[DONE]') continue;
-              
-              try {
-                // Parse the JSON data
-                const parsed = JSON.parse(data);
-                if (parsed.content) {
-                  fullMessage += parsed.content;
-                  // Pass just the content to the callback
-                  onStream(parsed.content);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to get response from agent');
+      }
+
+      // Handle streaming response
+      if (onStream && response.headers.get('content-type')?.includes('text/event-stream')) {
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullMessage = '';
+
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            // Decode the chunk and add to buffer
+            buffer += decoder.decode(value, { stream: true });
+            
+            // Process complete SSE messages
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(5).trim(); // Remove 'data: ' prefix and whitespace
+                
+                // Check if it's the end marker
+                if (data === '[DONE]') continue;
+                
+                try {
+                  // Parse the JSON data
+                  const parsed = JSON.parse(data);
+                  if (parsed.content) {
+                    fullMessage += parsed.content;
+                    // Pass just the content to the callback
+                    onStream(parsed.content);
+                  }
+                } catch (e) {
+                  console.warn('Error parsing SSE data:', e);
                 }
-              } catch (e) {
-                console.warn('Error parsing SSE data:', e);
               }
             }
           }
         }
+
+        // Return the complete message
+        return {
+          message: fullMessage,
+          sources: []
+        };
       }
 
-      // Return the complete message
+      // Handle regular response
+      const data = await response.json();
       return {
-        message: fullMessage,
-        sources: []
+        message: data.message,
+        sources: data.sources
       };
+
+    } catch (error) {
+      console.error('Error in sendMessageToAgent:', error)
+      throw error
     }
-
-    // Handle regular response
-    const data = await response.json();
-    return {
-      message: data.message,
-      sources: data.sources
-    };
-
-  } catch (error) {
-    console.error('Error in sendMessageToAgent:', error)
-    throw error
   }
-}
 
-export async function getAgentChatHistory(
-  agentId: string,
-  limit: number = 50
-): Promise<AgentMessage[]> {
-  const supabase = createClientComponentClient()
+  async getChatHistory(limit: number = 50): Promise<AgentMessage[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from('agent_chat_messages')
+        .select('*')
+        .eq('agent_id', this.agentId)
+        .order('timestamp', { ascending: true })
+        .limit(limit)
 
-  try {
-    const { data, error } = await supabase
-      .from('agent_chat_messages')
-      .select('*')
-      .eq('agent_id', agentId)
-      .order('timestamp', { ascending: true })
-      .limit(limit)
+      if (error) throw error
 
-    if (error) throw error
+      return (data as DatabaseMessage[]).map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        role: msg.role,
+        timestamp: new Date(msg.timestamp)
+      }))
 
-    return (data as DatabaseMessage[]).map(msg => ({
-      id: msg.id,
-      content: msg.content,
-      role: msg.role,
-      timestamp: new Date(msg.timestamp)
-    }))
+    } catch (error) {
+      console.error('Error fetching agent chat history:', error)
+      throw error
+    }
+  }
 
-  } catch (error) {
-    console.error('Error fetching agent chat history:', error)
-    throw error
+  clearContext() {
+    // Implement if needed
   }
 } 
