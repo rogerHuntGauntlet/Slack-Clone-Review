@@ -29,6 +29,27 @@ interface DatabaseMessage {
   timestamp: string
 }
 
+// Singleton instance map to reuse service instances
+const serviceInstances = new Map<string, AgentChatService>();
+
+export const getAgentChatHistory = async (agentId: string, limit: number = 50): Promise<AgentMessage[]> => {
+  const service = getServiceInstance(agentId);
+  return service.getChatHistory(limit);
+};
+
+export const sendMessageToAgent = async (agentId: string, message: string, onStream?: (chunk: string) => void): Promise<AgentChatResponse> => {
+  const service = getServiceInstance(agentId);
+  return service.chat(message, onStream);
+};
+
+// Helper to get/create service instance
+const getServiceInstance = (agentId: string): AgentChatService => {
+  if (!serviceInstances.has(agentId)) {
+    serviceInstances.set(agentId, new AgentChatService(agentId));
+  }
+  return serviceInstances.get(agentId)!;
+};
+
 export class AgentChatService {
   private agentId: string;
   private supabase: any;
