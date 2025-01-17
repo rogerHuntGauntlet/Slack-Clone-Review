@@ -101,6 +101,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   const [userWorkspaceIds, setUserWorkspaceIds] = useState<string[]>([])
   const [userCount, setUserCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false)
   const [email, setEmail] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
@@ -419,55 +420,79 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     e.preventDefault()
     if (!newWorkspaceName || !user) {
       setError('Please enter a workspace name')
+      logError('Workspace creation failed: missing name or user', { newWorkspaceName, userId: user?.id })
       return
     }
 
+    setIsCreatingWorkspace(true)
+    setError(null)
+    setSuccess(null)
+
     try {
       addLog('Creating workspace...')
+      logInfo('Starting workspace creation', { name: newWorkspaceName, userId: user.id })
 
       // Get session
       let session;
-      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      const { data: { session: supabaseSession }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        logError('Failed to get Supabase session', { error: sessionError })
+      }
       session = supabaseSession;
 
       if (!session) {
         try {
           session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
+          logInfo('Using session from cookie storage', { session })
         } catch (err) {
+          logError('Failed to parse session from cookie', { error: err })
           throw new Error('No valid session found');
         }
       }
 
       // Check user profile
       let userData = await getUserByEmail(session.user.email!)
+      logInfo('User profile check', { exists: !!userData, email: session.user.email })
+      
       if (!userData) {
         addLog('User profile not found, creating...')
+        logInfo('Creating new user profile', { userId: session.user.id, email: session.user.email })
         userData = await createUserProfile({
           id: session.user.id,
           email: session.user.email
         })
         if (!userData) {
+          logError('Failed to create user profile', { userId: session.user.id })
           throw new Error('Failed to create user profile')
         }
       }
 
       // Create workspace with error handling
+      logInfo('Attempting to create workspace', { name: newWorkspaceName, userId: userData.id })
       const result = await createWorkspace(newWorkspaceName, userData.id)
         .catch(error => {
           // Check if this is a duplicate workspace member error
           if (error.code === '23505' && error.message.includes('workspace_members_pkey')) {
-            // Log the specific error but continue with the workspace creation
+            logError('Duplicate workspace member error', { error, userId: userData.id })
             addLog('Note: User already a member of this workspace')
             return { workspace: null }
           }
+          logError('Workspace creation error', { error, name: newWorkspaceName, userId: userData.id })
           throw error // Re-throw other errors
         })
 
       if (!result?.workspace) {
+        logError('No workspace returned from creation', { result })
         throw new Error('Failed to create workspace')
       }
 
       addLog('Workspace created successfully')
+      logInfo('Workspace created successfully', { 
+        workspaceId: result.workspace.id, 
+        name: result.workspace.name,
+        userId: userData.id 
+      })
+      
       setWorkspaces(prevWorkspaces => [...prevWorkspaces, {
         id: result.workspace.id,
         name: result.workspace.name,
@@ -475,10 +500,20 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
       }])
       setNewWorkspaceName('')
       addLog('Workspace created, staying on selection screen')
+      setSuccess('Workspace created successfully!')
 
     } catch (error) {
-      logError('Error creating workspace', { error: error instanceof Error ? error.message : String(error) })
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      logError('Workspace creation failed', { 
+        error: errorMessage,
+        name: newWorkspaceName,
+        userId: user.id,
+        stack: error instanceof Error ? error.stack : undefined,
+        context: 'handleCreateWorkspace'
+      })
       setError(typeof error === 'string' ? error : 'Failed to create workspace. Please try again.')
+    } finally {
+      setIsCreatingWorkspace(false)
     }
   }
 
@@ -704,6 +739,9 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
           logInfo('Toggle favorite', { action: 'toggleFavorite', workspaceId })
         }}
         isMobile={isMobile}
+        error={error}
+        success={success}
+        isCreatingWorkspace={isCreatingWorkspace}
       />
     )
   }
@@ -949,6 +987,16 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
                   onClose={() => setShowProfileModal(false)}
                 />
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add loading indicator for workspace creation */}
+        {isCreatingWorkspace && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500 mx-auto mb-4"></div>
+              <p className="text-gray-700 dark:text-gray-300">Creating workspace...</p>
             </div>
           </div>
         )}

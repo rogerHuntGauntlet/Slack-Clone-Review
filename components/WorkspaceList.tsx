@@ -13,7 +13,10 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
   newWorkspaceName,
   setNewWorkspaceName,
   onToggleFavorite,
-  isMobile
+  isMobile,
+  error,
+  success,
+  isCreatingWorkspace
 }) => {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -174,19 +177,43 @@ const WorkspaceList: React.FC<WorkspaceListProps> = ({
                     onChange={(e) => setNewWorkspaceName(e.target.value)}
                     className="mt-1 block w-full px-4 py-2 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Enter workspace name"
+                    disabled={isCreatingWorkspace}
                   />
                 </div>
+                {error && (
+                  <div className="text-red-500 text-sm mt-2">
+                    {error}
+                  </div>
+                )}
+                {success && (
+                  <div className="text-green-500 text-sm mt-2">
+                    {success}
+                  </div>
+                )}
                 <div className="flex space-x-4">
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    className={`px-4 py-2 bg-blue-500 text-white rounded-lg transition-colors flex items-center ${
+                      isCreatingWorkspace ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'
+                    }`}
+                    disabled={isCreatingWorkspace}
                   >
-                    Create Workspace
+                    {isCreatingWorkspace ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                        Creating...
+                      </>
+                    ) : (
+                      'Create Workspace'
+                    )}
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowCreateForm(false)}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                    className={`px-4 py-2 bg-gray-200 text-gray-700 rounded-lg transition-colors ${
+                      isCreatingWorkspace ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'
+                    }`}
+                    disabled={isCreatingWorkspace}
                   >
                     Cancel
                   </button>

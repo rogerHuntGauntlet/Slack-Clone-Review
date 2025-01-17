@@ -11,6 +11,9 @@ export interface WorkspaceListProps extends BaseProps {
   newWorkspaceName: string
   setNewWorkspaceName: (name: string) => void
   onToggleFavorite: (workspaceId: string) => void
+  error?: string | null
+  success?: string | null
+  isCreatingWorkspace?: boolean
 }
 
 export interface HeaderProps extends BaseProps {

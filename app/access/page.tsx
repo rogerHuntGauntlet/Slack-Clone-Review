@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Session } from '@supabase/supabase-js';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { checkUserAccess } from '@/utils/checkAccess';
 
@@ -28,11 +29,70 @@ function AccessPageContent() {
     const [timeRemaining, setTimeRemaining] = useState<number>(5);
     const [canAnswer, setCanAnswer] = useState<boolean>(true);
     const [paymentLoading, setPaymentLoading] = useState(false);
-    const [isFromAuth, setIsFromAuth] = useState(false);
+    const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
     const supabase = createClientComponentClient();
     const router = useRouter();
     const searchParams = useSearchParams();
+
+    // Handle auth status messages
+    useEffect(() => {
+        const status = searchParams.get('status');
+        if (status === 'auth_failed') {
+            setStatusMessage('Authentication failed. Please try again or contact support.');
+        } else if (status === 'no_user') {
+            setStatusMessage('No user found. Please try logging in again.');
+        } else if (status === 'auth_success') {
+            setStatusMessage('Authentication successful! Please wait while we check your access...');
+        }
+    }, [searchParams]);
+
+    useEffect(() => {
+        const checkAuth = async () => {
+            setLoading(true);
+            
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+
+                if (!session) {
+                    router.push('/auth');
+                    return;
+                }
+
+                // Check if user already has access
+                const hasAccess = await checkUserAccess(session.user.id);
+                
+                if (hasAccess) {
+                    router.push('/onboarding');
+                    return;
+                }
+
+                setLoading(false);
+            } catch (error) {
+                console.error('Error checking auth:', error);
+                setError('An error occurred while checking your access. Please refresh the page.');
+                setLoading(false);
+            }
+        };
+
+        // Listen for auth state changes
+        const {
+            data: { subscription },
+        } = supabase.auth.onAuthStateChange((_event: string, session: Session | null) => {
+            if (session) {
+                checkAuth();
+            } else {
+                router.push('/auth');
+            }
+        });
+
+        // Initial check
+        checkAuth();
+
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, [router, supabase]);
 
     const fetchNewRiddle = async () => {
         try {
@@ -76,57 +136,6 @@ function AccessPageContent() {
             fetchNewRiddle();
         }
     }, [loading]);
-
-    useEffect(() => {
-        const checkAuth = async () => {
-            setLoading(true);
-            
-            // Check if we're coming from auth verification
-            const fromAuth = searchParams.get('redirectedfromauth') === 'supabase';
-            setIsFromAuth(fromAuth);
-
-            // First check for cookie
-            const cookieStr = await sessionStorage.getItem('cookie');
-            if (cookieStr) {
-                const parsedCookie = JSON.parse(cookieStr);
-                setSessionCookie(parsedCookie);
-                console.log("Found session cookie:", parsedCookie);
-            }
-
-            // Then check Supabase session
-            const { data: { session }, error: authError } = await supabase.auth.getSession();
-            
-            if (authError) {
-                console.error('Auth error:', authError);
-                if (!cookieStr) {
-                    router.push('/');
-                    return;
-                }
-            }
-
-            // If we have neither a session nor a cookie, redirect
-            if (!session && !cookieStr) {
-                console.log('No session or cookie found');
-                router.push('/');
-                return;
-            }
-
-            // Check if user already has access
-            const userId = session?.user?.id || JSON.parse(cookieStr!)?.user?.id;
-            const hasAccess = await checkUserAccess(userId);
-            
-            // Only redirect to onboarding if we're not coming from auth verification
-            if (hasAccess && !fromAuth) {
-                console.log('User already has access, redirecting to onboarding');
-                router.push('/onboarding');
-                return;
-            }
-
-            setLoading(false);
-        };
-
-        checkAuth();
-    }, [router, supabase, searchParams]);
 
     useEffect(() => {
         const fetchRemainingCodes = async () => {
@@ -281,150 +290,172 @@ function AccessPageContent() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white p-4">
-            <div className="max-w-4xl mx-auto pt-20">
-                <h1 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
-                    Choose Your Path
-                </h1>
-
-                <div className="grid md:grid-cols-3 gap-8 mt-12">
-                    {/* Founder Code Option */}
-                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
-                        <h2 className="text-xl font-semibold mb-4">Founder Code</h2>
-                        <p className="text-gray-400 mb-4">
-                            Enter any code to claim one of the {remainingCodes !== null ? remainingCodes : '...'} remaining founder spots.
-                        </p>
-                        <input
-                            type="text"
-                            value={code}
-                            onChange={(e) => setCode(e.target.value)}
-                            placeholder="Enter code"
-                            className="w-full p-2 mb-4 bg-gray-700 rounded-lg border border-gray-600 text-white"
-                        />
-                        <div className="mb-4">
-                            <label className="flex items-center space-x-2 text-sm">
-                                <input
-                                    type="checkbox"
-                                    checked={termsAccepted}
-                                    onChange={(e) => setTermsAccepted(e.target.checked)}
-                                    className="rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
-                                />
-                                <span className="text-gray-300">
-                                    I agree that creating multiple accounts to claim multiple founder codes will result in all my accounts being banned
-                                </span>
-                            </label>
-                        </div>
-                        <button
-                            onClick={(e) => {
-                                e.preventDefault();
-                                if (!code) return;
-                                handleSubmit(e);
-                            }}
-                            disabled={loading || !code || !termsAccepted || remainingCodes === 0}
-                            className="w-full py-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg font-medium hover:from-blue-600 hover:to-purple-700 transition-colors disabled:opacity-50"
-                        >
-                            {loading ? 'Verifying...' : remainingCodes === 0 ? 'All Claimed' : 'Submit Code'}
-                        </button>
+        <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
+            <div className="max-w-4xl mx-auto pt-20 px-4">
+                <h2 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
+                    Access Check
+                </h2>
+                
+                {/* Status Messages */}
+                {statusMessage && (
+                    <div className="mt-4 p-4 rounded-md bg-blue-500/10 text-blue-400">
+                        {statusMessage}
                     </div>
-
-                    {/* Riddle Option */}
-                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
-                        <h2 className="text-xl font-semibold mb-4">Solve the Riddle</h2>
-                        <div className="mb-4">
-                            {currentRiddle && !riddleLoading ? (
-                                <>
-                                    <div className="text-center mb-4">
-                                        <div className="text-4xl font-bold text-blue-400 mb-2">{timeRemaining}</div>
-                                        <p className="text-gray-400">Seconds remaining to answer</p>
-                                    </div>
-                                    <p className="text-gray-400 mb-4">{currentRiddle.riddle}</p>
-                                    <input
-                                        type="text"
-                                        value={riddleAnswer}
-                                        onChange={(e) => setRiddleAnswer(e.target.value)}
-                                        placeholder="Quick! Type your answer..."
-                                        className="w-full p-2 mb-4 bg-gray-700 rounded-lg border border-gray-600 text-white"
-                                        disabled={!canAnswer}
-                                    />
-                                    <div className="mb-4">
-                                        <label className="flex items-center space-x-2 text-sm">
-                                            <input
-                                                type="checkbox"
-                                                checked={riddleTermsAccepted}
-                                                onChange={(e) => setRiddleTermsAccepted(e.target.checked)}
-                                                className="rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
-                                            />
-                                            <span className="text-gray-300">
-                                                I agree to use this access method fairly and not share answers with others
-                                            </span>
-                                        </label>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                if (!riddleAnswer || !riddleTermsAccepted) return;
-                                                handleSubmit(e);
-                                            }}
-                                            disabled={loading || !riddleAnswer || !riddleTermsAccepted || !canAnswer}
-                                            className="flex-1 py-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg font-medium hover:from-blue-600 hover:to-purple-700 transition-colors disabled:opacity-50"
-                                        >
-                                            {loading ? 'Checking...' : 'Submit Answer'}
-                                        </button>
-                                        <button
-                                            onClick={() => fetchNewRiddle()}
-                                            disabled={riddleLoading || canAnswer}
-                                            className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50"
-                                        >
-                                            New Riddle
-                                        </button>
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="text-center text-gray-400">
-                                    <p>{riddleLoading ? 'Loading riddle...' : 'Failed to load riddle. Please try again.'}</p>
-                                    {!riddleLoading && (
-                                        <button
-                                            onClick={() => fetchNewRiddle()}
-                                            disabled={riddleLoading}
-                                            className="mt-4 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50"
-                                        >
-                                            Retry
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Payment Option */}
-                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
-                        <h2 className="text-xl font-semibold mb-4">Premium Access</h2>
-                        <p className="text-gray-400 mb-4">Get immediate access with a one-time payment.</p>
-                        <div className="text-3xl font-bold text-center mb-4">$1,000</div>
-                        <button
-                            onClick={handlePayment}
-                            disabled={paymentLoading}
-                            className="w-full py-2 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center"
-                        >
-                            {paymentLoading ? (
-                                <>
-                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Processing...
-                                </>
-                            ) : (
-                                'Purchase Access'
-                            )}
-                        </button>
-                    </div>
-                </div>
+                )}
 
                 {error && (
-                    <div className="mt-8 p-4 bg-red-900/30 border-l-4 border-red-500 text-red-300 rounded">
+                    <div className="mt-4 p-4 rounded-md bg-red-500/10 text-red-400">
                         {error}
+                        <button 
+                            onClick={() => window.location.reload()} 
+                            className="ml-2 underline"
+                        >
+                            Refresh Page
+                        </button>
+                    </div>
+                )}
+
+                {loading ? (
+                    <div className="mt-8 text-center">
+                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                        <p className="mt-4 text-gray-400">Checking your access...</p>
+                    </div>
+                ) : (
+                    <div className="mt-8">
+                        <div className="grid md:grid-cols-3 gap-8">
+                            {/* Founder Code Option */}
+                            <div className="bg-gray-800/50 backdrop-blur-sm p-8 rounded-2xl border border-gray-700/50">
+                                <h2 className="text-2xl font-semibold mb-4 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Founder Code</h2>
+                                <p className="text-gray-400 mb-6">
+                                    Enter any code to claim one of the {remainingCodes !== null ? remainingCodes : '...'} remaining founder spots.
+                                </p>
+                                <input
+                                    type="text"
+                                    value={code}
+                                    onChange={(e) => setCode(e.target.value)}
+                                    placeholder="Enter code"
+                                    className="w-full p-3 mb-4 bg-gray-900/50 rounded-lg border border-gray-700/50 text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                                <div className="mb-6">
+                                    <label className="flex items-start space-x-3 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={termsAccepted}
+                                            onChange={(e) => setTermsAccepted(e.target.checked)}
+                                            className="mt-1 rounded border-gray-700 bg-gray-900/50 text-blue-500 focus:ring-blue-500"
+                                        />
+                                        <span className="text-gray-400">
+                                            I agree that creating multiple accounts to claim multiple founder codes will result in all my accounts being banned
+                                        </span>
+                                    </label>
+                                </div>
+                                <button
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        if (!code) return;
+                                        handleSubmit(e);
+                                    }}
+                                    disabled={loading || !code || !termsAccepted || remainingCodes === 0}
+                                    className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg font-medium hover:from-blue-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {loading ? 'Verifying...' : remainingCodes === 0 ? 'All Claimed' : 'Submit Code'}
+                                </button>
+                            </div>
+
+                            {/* Riddle Option */}
+                            <div className="bg-gray-800/50 backdrop-blur-sm p-8 rounded-2xl border border-gray-700/50">
+                                <h2 className="text-2xl font-semibold mb-4 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Solve the Riddle</h2>
+                                <div className="mb-4">
+                                    {currentRiddle && !riddleLoading ? (
+                                        <>
+                                            <div className="text-center mb-6">
+                                                <div className="text-5xl font-bold text-blue-400 mb-2">{timeRemaining}</div>
+                                                <p className="text-gray-400">Seconds remaining to answer</p>
+                                            </div>
+                                            <p className="text-gray-300 mb-6">{currentRiddle.riddle}</p>
+                                            <input
+                                                type="text"
+                                                value={riddleAnswer}
+                                                onChange={(e) => setRiddleAnswer(e.target.value)}
+                                                placeholder="Quick! Type your answer..."
+                                                className="w-full p-3 mb-4 bg-gray-900/50 rounded-lg border border-gray-700/50 text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                                                disabled={!canAnswer}
+                                            />
+                                            <div className="mb-6">
+                                                <label className="flex items-start space-x-3 text-sm">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={riddleTermsAccepted}
+                                                        onChange={(e) => setRiddleTermsAccepted(e.target.checked)}
+                                                        className="mt-1 rounded border-gray-700 bg-gray-900/50 text-blue-500 focus:ring-blue-500"
+                                                    />
+                                                    <span className="text-gray-400">
+                                                        I agree to use this access method fairly and not share answers with others
+                                                    </span>
+                                                </label>
+                                            </div>
+                                            <div className="flex gap-3">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        if (!riddleAnswer || !riddleTermsAccepted) return;
+                                                        handleSubmit(e);
+                                                    }}
+                                                    disabled={loading || !riddleAnswer || !riddleTermsAccepted || !canAnswer}
+                                                    className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg font-medium hover:from-blue-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    {loading ? 'Checking...' : 'Submit Answer'}
+                                                </button>
+                                                <button
+                                                    onClick={() => fetchNewRiddle()}
+                                                    disabled={riddleLoading || canAnswer}
+                                                    className="px-4 py-3 bg-gray-700/50 text-white rounded-lg hover:bg-gray-600/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    New Riddle
+                                                </button>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-center text-gray-400">
+                                            <p>{riddleLoading ? 'Loading riddle...' : 'Failed to load riddle. Please try again.'}</p>
+                                            {!riddleLoading && (
+                                                <button
+                                                    onClick={() => fetchNewRiddle()}
+                                                    disabled={riddleLoading}
+                                                    className="mt-4 px-4 py-3 bg-gray-700/50 text-white rounded-lg hover:bg-gray-600/50 transition-all disabled:opacity-50"
+                                                >
+                                                    Retry
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Payment Option */}
+                            <div className="bg-gray-800/50 backdrop-blur-sm p-8 rounded-2xl border border-gray-700/50">
+                                <h2 className="text-2xl font-semibold mb-4 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Premium Access</h2>
+                                <p className="text-gray-400 mb-6">Get immediate access with a one-time payment.</p>
+                                <div className="text-4xl font-bold text-center mb-6 bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">$1,000</div>
+                                <button
+                                    onClick={handlePayment}
+                                    disabled={paymentLoading}
+                                    className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                                >
+                                    {paymentLoading ? (
+                                        <>
+                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Processing...
+                                        </>
+                                    ) : (
+                                        'Purchase Access'
+                                    )}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

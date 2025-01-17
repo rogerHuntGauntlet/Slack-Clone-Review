@@ -100,12 +100,18 @@ enabled = true
 site_url = "https://www.ohfpartners.com"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = [
-  "https://www.ohfpartners.com",
   "https://www.ohfpartners.com/access",
-  "https://www.ohfpartners.com/access?redirectedfromauth=supabase",
-  "https://www.ohfpartners.com/auth/callback",
-  "http://127.0.0.1:3000",
-  "https://127.0.0.1:3000"
+  "https://www.ohfpartners.com/access?status=auth_success",
+  "https://www.ohfpartners.com/access?status=auth_failed",
+  "https://www.ohfpartners.com/access?status=no_user",
+  "http://localhost:3000/access",
+  "http://localhost:3000/access?status=auth_success",
+  "http://localhost:3000/access?status=auth_failed",
+  "http://localhost:3000/access?status=no_user",
+  "http://127.0.0.1:3000/access",
+  "http://127.0.0.1:3000/access?status=auth_success",
+  "http://127.0.0.1:3000/access?status=auth_failed",
+  "http://127.0.0.1:3000/access?status=no_user"
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600

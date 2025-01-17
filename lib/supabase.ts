@@ -13,7 +13,10 @@ function safeString(value: unknown): string {
 }
 
 // Helper function to create a properly typed log context
-function createLogContext(data: Record<string, unknown>): LogContext {
+function createLogContext(data: Record<string, unknown> | null | undefined): LogContext {
+  if (!data) {
+    return {};
+  }
   const context: LogContext = {};
   for (const [key, value] of Object.entries(data)) {
     if (value === null || value === undefined) {
@@ -82,6 +85,14 @@ interface MessageReactionPayload {
     reactions: { [key: string]: string[] };
   } | null;
   eventType: 'UPDATE';
+}
+
+interface SystemUser {
+  id: string;
+  username: string;
+  email: string;
+  status: string;
+  avatar_url: string;
 }
 
 logInfo('🔧 [Supabase] Starting Supabase initialization...');
@@ -668,7 +679,7 @@ export const createWorkspace = async (name: string, userId?: string) => {
     const { data: existingWorkspace, error: existingWorkspaceError } = await supabase
       .from('workspaces')
       .select('*')
-      .eq('name', name)
+      .eq('name', name.trim())
       .single();
 
     if (existingWorkspace) {
@@ -684,19 +695,97 @@ export const createWorkspace = async (name: string, userId?: string) => {
 
     // Get system users
     logInfo('🤖 [createWorkspace] Fetching system users...')
-    const { data: systemUsers, error: systemError } = await supabase
+    let { data: systemUsers, error: systemError }: { data: SystemUser[] | null, error: any } = await supabase
       .from('user_profiles')
-      .select('*')
+      .select('id, username, email')
       .in('id', ['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002']);
 
-    if (systemError || !systemUsers || systemUsers.length !== 2) {
-      logError('❌ [createWorkspace] Error getting system users:', createLogContext(systemError))
-      throw new Error('System users not found')
+    if (systemError) {
+      logError('❌ [createWorkspace] Database error fetching system users:', createLogContext({ error: systemError }))
+      throw new Error(`Failed to fetch system users: ${systemError.message}`)
     }
-    logInfo('✅ [createWorkspace] System users found:', createLogContext(systemUsers))
+
+    logInfo('🔍 [createWorkspace] Found system users:', createLogContext({ 
+      count: systemUsers?.length || 0,
+      users: systemUsers 
+    }))
+
+    // Create missing system users if needed
+    const requiredUsers: SystemUser[] = [
+      {
+        id: '00000000-0000-0000-0000-000000000001',
+        username: 'ai.assistant',
+        email: 'ai.assistant@ohfpartners.com',
+        status: 'online',
+        avatar_url: 'https://www.gravatar.com/avatar/00000000000000000000000000000001?d=identicon'
+      },
+      {
+        id: '00000000-0000-0000-0000-000000000002',
+        username: 'bro.assistant',
+        email: 'bro.assistant@ohfpartners.com',
+        status: 'online',
+        avatar_url: 'https://www.gravatar.com/avatar/00000000000000000000000000000002?d=identicon'
+      }
+    ];
+
+    const existingIds = new Set(systemUsers?.map((u: { id: string }) => u.id) || []);
+    const missingUsers = requiredUsers.filter((u: SystemUser) => !existingIds.has(u.id));
+
+    if (missingUsers.length > 0) {
+      logInfo('🔧 [createWorkspace] Creating missing system users:', createLogContext({ 
+        missingCount: missingUsers.length,
+        missingIds: missingUsers.map(u => u.id)
+      }));
+
+      const { data: createdUsers, error: createError } = await supabase
+        .from('user_profiles')
+        .upsert(missingUsers)
+        .select();
+
+      if (createError) {
+        logError('❌ [createWorkspace] Failed to create system users:', createLogContext({ error: createError }))
+        throw new Error(`Failed to create system users: ${createError.message}`)
+      }
+
+      if (!createdUsers) {
+        logError('❌ [createWorkspace] No users were created')
+        throw new Error('Failed to create system users: No users were created')
+      }
+
+      logInfo('✅ [createWorkspace] Created missing system users:', createLogContext({ 
+        createdCount: createdUsers.length,
+        createdIds: createdUsers.map((u: { id: string }) => u.id)
+      }))
+
+      // Merge existing and created users
+      systemUsers = [...(systemUsers || []), ...createdUsers];
+    }
+
+    if (!systemUsers || systemUsers.length !== 2) {
+      logError('❌ [createWorkspace] Invalid number of system users:', createLogContext({ 
+        count: systemUsers?.length,
+        expectedCount: 2,
+        actualUsers: systemUsers
+      }))
+      throw new Error('Invalid number of system users found')
+    }
 
     const aiUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000001')
     const broUser = systemUsers.find((u: { id: string }) => u.id === '00000000-0000-0000-0000-000000000002')
+
+    if (!aiUser || !broUser) {
+      logError('❌ [createWorkspace] Missing required system users:', createLogContext({
+        aiUserFound: !!aiUser,
+        broUserFound: !!broUser,
+        systemUsers
+      }))
+      throw new Error('Missing required system users')
+    }
+
+    logInfo('✅ [createWorkspace] System users verified:', createLogContext({ 
+      aiUserId: aiUser.id,
+      broUserId: broUser.id
+    }))
 
     // Create the workspace
     logInfo('🏢 [createWorkspace] Creating workspace...')
@@ -747,24 +836,24 @@ export const createWorkspace = async (name: string, userId?: string) => {
     logInfo('✅ [createWorkspace] Members added successfully')
 
     // Create channels array
-    
+    logInfo('📝 [createWorkspace] Creating default channels...')
 
     // Create general channel
-    let generalChannel = createChannel(
+    let generalChannel = await createChannel(
       workspace.id,
       'general',
       userId,
       'This is the general channel for the workspace.'
     ) 
 
-    let socialChannel = createChannel(
+    let socialChannel = await createChannel(
       workspace.id,
       'social',
       userId,
       'This is the social channel for the workspace.'
     ) 
 
-    let workChannel = createChannel(
+    let workChannel = await createChannel(
       workspace.id,
       'work',
       userId,
@@ -775,8 +864,6 @@ export const createWorkspace = async (name: string, userId?: string) => {
 
     // Add members to general channel
    
-
-    
     logInfo('✅ [createWorkspace] Members added to general channel')
 
     logInfo('🎉 [createWorkspace] Workspace setup completed successfully:', createLogContext({

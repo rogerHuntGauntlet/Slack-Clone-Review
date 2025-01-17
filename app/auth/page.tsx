@@ -209,7 +209,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
       const { data: { session } } = await supabase.auth.getSession()
       debugLog('Current session:', session)
 
-      setMessage('Sign in successful. Setting up your profile...')
+      setMessage('Sign in successful. Setting up your profile...if it hangs, just refresh the page...what are you lazy? dont want to work is that it?')
       sessionStorage.setItem('userEmail', email)
       await sessionStorage.setItem('cookie', JSON.stringify(session))
 
