@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { checkUserAccess } from '@/utils/checkAccess';
 
 interface SessionCookie {
@@ -28,9 +28,11 @@ export default function AccessPage() {
     const [timeRemaining, setTimeRemaining] = useState<number>(5);
     const [canAnswer, setCanAnswer] = useState<boolean>(true);
     const [paymentLoading, setPaymentLoading] = useState(false);
+    const [isFromAuth, setIsFromAuth] = useState(false);
 
     const supabase = createClientComponentClient();
     const router = useRouter();
+    const searchParams = useSearchParams();
 
     const fetchNewRiddle = async () => {
         try {
@@ -77,6 +79,12 @@ export default function AccessPage() {
 
     useEffect(() => {
         const checkAuth = async () => {
+            setLoading(true);
+            
+            // Check if we're coming from auth verification
+            const fromAuth = searchParams.get('redirectedfromauth') === 'supabase';
+            setIsFromAuth(fromAuth);
+
             // First check for cookie
             const cookieStr = await sessionStorage.getItem('cookie');
             if (cookieStr) {
@@ -106,18 +114,19 @@ export default function AccessPage() {
             // Check if user already has access
             const userId = session?.user?.id || JSON.parse(cookieStr!)?.user?.id;
             const hasAccess = await checkUserAccess(userId);
-            if (hasAccess) {
+            
+            // Only redirect to onboarding if we're not coming from auth verification
+            if (hasAccess && !fromAuth) {
                 console.log('User already has access, redirecting to onboarding');
                 router.push('/onboarding');
                 return;
             }
 
-
             setLoading(false);
         };
 
         checkAuth();
-    }, [router, supabase]);
+    }, [router, supabase, searchParams]);
 
     useEffect(() => {
         const fetchRemainingCodes = async () => {
@@ -193,12 +202,14 @@ export default function AccessPage() {
 
             if (response.ok) {
                 console.log('✅ Access granted, redirecting to onboarding');
-                router.push('/onboarding');
+                // Clear the redirectedfromauth parameter when proceeding
+                const url = new URL('/onboarding', window.location.href);
+                window.location.href = url.toString();
             } else {
                 console.log('Submit error:', data);
                 setError(data.error || 'An error occurred');
                 if (riddleAnswer) {
-                    fetchNewRiddle(); // Get a new riddle if the current one failed
+                    fetchNewRiddle();
                 }
             }
 

@@ -1,4 +1,4 @@
-type Message = {
+export type Message = {
   id: string
   content: string
   created_at: string
@@ -9,7 +9,7 @@ type Message = {
   replies?: Reply[]
 }
 
-type Reply = {
+export type Reply = {
   id: string
   content: string
   created_at: string
@@ -18,7 +18,7 @@ type Reply = {
   parent_id: string
 }
 
-type User = {
+export type User = {
   id: string
   username: string
   email: string
@@ -29,14 +29,14 @@ type User = {
   employer?: string
 }
 
-type Workspace = {
+export type Workspace = {
   id: string
   name: string
   role: 'admin' | 'member'
   isFavorite?: boolean
 }
 
-type Channel = {
+export type Channel = {
   id: string
   name: string
   workspace_id: string

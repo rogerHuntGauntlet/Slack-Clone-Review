@@ -71,7 +71,25 @@ function AuthContent({ workspaceId }: AuthContentProps) {
         setLoading(true)
         
         try {
-          // Check for existing profile
+          // First check access_records
+          const { data: accessRecord, error: accessError } = await supabase
+            .from('access_records')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .eq('is_active', true)
+            .single()
+
+          debugLog('Access check result:', { accessRecord, accessError })
+
+          // If no access record, redirect to access page
+          if (!accessRecord || accessError) {
+            debugLog('No access record found - redirecting to access')
+            setMessage('Redirecting to access page...')
+            await router.push('/access?redirectedfromauth=supabase')
+            return
+          }
+
+          // Then check for existing profile
           const { data: profile, error: profileError } = await supabase
             .from('user_profiles')
             .select('*')
@@ -80,7 +98,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 
           debugLog('Profile check result:', { profile, profileError })
 
-          // If no profile exists or there's an error, this is a new user
+          // If no profile exists or there's an error, redirect to onboarding
           if (!profile || profileError) {
             debugLog('No profile found - redirecting to onboarding')
             setMessage('Redirecting to onboarding...')
@@ -88,7 +106,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
             return
           }
 
-          // If we get here, user has a profile, proceed to platform
+          // If we get here, user has both access and profile, proceed to platform
           debugLog('Existing profile found - redirecting to platform')
           await router.push('/platform')
         } catch (error: any) {
@@ -156,7 +174,8 @@ function AuthContent({ workspaceId }: AuthContentProps) {
           redirectTo: getRedirectUrl(),
           data: {
             is_new_signup: true,
-            signup_timestamp: new Date().toISOString()
+            signup_timestamp: new Date().toISOString(),
+            needs_access_check: true
           }
         },
       })

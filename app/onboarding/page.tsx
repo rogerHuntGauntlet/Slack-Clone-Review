@@ -75,8 +75,22 @@ function OnboardingContent() {
           throw new Error('No user ID found in session');
         }
 
-        // First check if we have everything we need
-        const [profileResult, workspacesResult] = await Promise.all([
+        // Check access first
+        const { data: accessRecord } = await supabase
+          .from('access_records')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .eq('is_active', true)
+          .single()
+
+        if (!accessRecord) {
+          console.log('❌ No active access record found')
+          window.location.href = '/access'
+          return
+        }
+
+        // Then check existing data
+        const [profileResult, workspacesResult, universalMembershipResult] = await Promise.all([
           supabase
             .from('user_profiles')
             .select('username')
@@ -85,34 +99,31 @@ function OnboardingContent() {
           supabase
             .from('workspaces')
             .select('id')
-            .eq('created_by', session.user.id)
+            .eq('created_by', session.user.id),
+          supabase
+            .from('workspace_members')
+            .select('*')
+            .eq('workspace_id', '00000000-0000-0000-0000-000000000000')
+            .eq('user_id', session.user.id)
+            .single()
         ])
 
         const hasProfile = profileResult.data && !profileResult.error
         const hasCreatedWorkspace = workspacesResult.data && workspacesResult.data.length > 0
+        const isInUniversalWorkspace = universalMembershipResult.data && !universalMembershipResult.error
         const isNewSignup = session.user.user_metadata?.is_new_signup === true
-        const hasCompletedPayment = session.user.user_metadata?.has_completed_payment === true
 
-        // If we have everything and not a new signup, force redirect to platform
-        if (hasProfile && hasCreatedWorkspace && !isNewSignup && !hasCompletedPayment) {
-          console.log('✅ User has completed setup, forcing redirect to platform...')
-          // Clear any onboarding state
+        // If we have everything and not a new signup, go to platform
+        if (hasProfile && hasCreatedWorkspace && isInUniversalWorkspace && !isNewSignup) {
+          console.log('✅ User has completed setup, redirecting to platform...')
+          // Clear onboarding state
           localStorage.removeItem('onboarding')
           localStorage.removeItem('onboardingStep')
-
-          // Force navigation to platform with no-cache headers
-          const response = await fetch(platformUrl, {
-            headers: {
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'Expires': '0'
-            }
-          })
           window.location.href = platformUrl
           return
         }
 
-        // Otherwise, load existing data for the form
+        // Load existing data and set steps
         if (profileResult.data?.username) {
           console.log('✅ Found existing profile')
           setUsername(profileResult.data.username)
@@ -120,7 +131,10 @@ function OnboardingContent() {
           setCurrentStep(prev => prev === 0 ? 1 : prev)
         }
 
-        // Check for existing workspace
+        if (isInUniversalWorkspace) {
+          console.log('✅ Already in OHF Community workspace')
+        }
+
         if (hasCreatedWorkspace) {
           const { data: workspace } = await supabase
             .from('workspaces')
@@ -136,7 +150,7 @@ function OnboardingContent() {
             updateStepStatus('workspace', 'complete')
             setCurrentStep(prev => prev <= 1 ? 2 : prev)
 
-            // Check for existing channel in this workspace
+            // Check channels
             const { data: channel } = await supabase
               .from('channels')
               .select('name')
@@ -150,31 +164,6 @@ function OnboardingContent() {
               console.log('✅ Found existing channel')
               setChannelName(channel.name)
               updateStepStatus('channel', 'complete')
-
-              // If we have everything, force redirect
-              if (profileResult.data?.username && workspace?.name) {
-                console.log('✅ All steps complete, forcing redirect to platform...')
-                // Update user metadata
-                await supabase.auth.updateUser({
-                  data: { is_new_signup: false }
-                })
-
-                // Clear any onboarding state
-                localStorage.removeItem('onboarding')
-                localStorage.removeItem('onboardingStep')
-
-                // Force navigation to platform with no-cache headers
-         
-                const response = await fetch(platformUrl, {
-                  headers: {
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                  }
-                })
-                window.location.href = platformUrl
-                return
-              }
             }
           }
         }

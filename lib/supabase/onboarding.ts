@@ -1,6 +1,26 @@
 import { supabase } from '../supabase'
 import { logInfo as log, logError } from '../logger'
 import { updateReaction } from '../supabase'
+import { LogContext } from '../logger'
+
+// Helper to create properly typed log context
+function createLogContext(data: Record<string, unknown>): LogContext {
+  const context: LogContext = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value === null || value === undefined) {
+      context[key] = null;
+    } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      context[key] = value;
+    } else if (Array.isArray(value)) {
+      context[key] = value.map(String);
+    } else if (typeof value === 'object') {
+      context[key] = value as Record<string, unknown>;
+    } else {
+      context[key] = String(value);
+    }
+  }
+  return context;
+}
 
 interface ProfileData {
   username: string
@@ -20,52 +40,126 @@ interface ChannelData {
 
 const UNIVERSAL_WORKSPACE_ID = '00000000-0000-0000-0000-000000000000'
 
+export async function ensureUniversalWorkspaceMembership(userId: string) {
+  try {
+    const context = createLogContext({ userId })
+    log('Checking OHF Community workspace membership', context)
+
+    // First check if user is already a member
+    const { data: membership, error: membershipError } = await supabase
+      .from('workspace_members')
+      .select('*')
+      .eq('workspace_id', UNIVERSAL_WORKSPACE_ID)
+      .eq('user_id', userId)
+      .single()
+
+    if (membershipError && membershipError.code !== 'PGRST116') {
+      const errorContext = createLogContext({ error: membershipError.message })
+      logError('Error checking workspace membership', errorContext)
+      throw membershipError
+    }
+
+    // If not a member, add them
+    if (!membership) {
+      const { error: addError } = await supabase
+        .from('workspace_members')
+        .insert({
+          workspace_id: UNIVERSAL_WORKSPACE_ID,
+          user_id: userId,
+          role: 'member'
+        })
+
+      if (addError) {
+        const errorContext = createLogContext({ error: addError.message })
+        logError('Error adding user to OHF Community workspace', errorContext)
+        throw addError
+      }
+
+      // Now get the general channel ID
+      const { data: generalChannel, error: channelError } = await supabase
+        .from('channels')
+        .select('id')
+        .eq('workspace_id', UNIVERSAL_WORKSPACE_ID)
+        .eq('name', 'general')
+        .single()
+
+      if (channelError) {
+        const errorContext = createLogContext({ error: channelError.message })
+        logError('Error fetching general channel', errorContext)
+        throw channelError
+      }
+
+      // Add user to general channel
+      const { error: channelMemberError } = await supabase
+        .from('channel_members')
+        .insert({
+          channel_id: generalChannel.id,
+          user_id: userId,
+          role: 'member'
+        })
+
+      if (channelMemberError) {
+        const errorContext = createLogContext({ error: channelMemberError.message })
+        logError('Error adding user to general channel', errorContext)
+        throw channelMemberError
+      }
+
+      const addedContext = createLogContext({ userId })
+      log('Added user to OHF Community workspace and general channel', addedContext)
+    } else {
+      const existingContext = createLogContext({ userId })
+      log('User already in OHF Community workspace', existingContext)
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorContext = createLogContext({ error: errorMessage })
+    logError('Error in ensureUniversalWorkspaceMembership', errorContext)
+    throw error
+  }
+}
+
 export async function updateUserProfile(userId: string, data: ProfileData) {
   try {
-    log('🔄 [updateUserProfile] Updating profile for user:', userId)
+    const context = createLogContext({ userId })
+    log('Updating profile for user', context)
 
+    // First create/update the profile
     const { data: profile, error } = await supabase
       .from('user_profiles')
-      .update({
+      .upsert({
+        id: userId,
         username: data.username,
         bio: data.bio,
         avatar_url: data.avatar_url,
         updated_at: new Date().toISOString()
       })
-      .eq('id', userId)
       .select()
       .single()
 
     if (error) {
-      logError('❌ [updateUserProfile] Error:', error)
+      const errorContext = createLogContext({ error: error.message })
+      logError('Error updating user profile', errorContext)
       throw error
     }
 
-    // Add user to universal workspace
-    const { error: universalError } = await supabase
-      .from('workspace_members')
-      .insert({
-        workspace_id: UNIVERSAL_WORKSPACE_ID,
-        user_id: userId,
-        role: 'member'
-      })
+    // Then ensure OHF Community membership
+    await ensureUniversalWorkspaceMembership(userId)
 
-    if (universalError && universalError.code !== '23505') { // Ignore if already exists
-      logError('❌ [updateUserProfile] Error adding to universal workspace:', universalError)
-      throw universalError
-    }
-
-    log('✅ [updateUserProfile] Profile updated successfully:', profile)
+    const successContext = createLogContext({ userId })
+    log('Profile updated and workspace membership verified', successContext)
     return profile
   } catch (error) {
-    logError('❌ [updateUserProfile] Error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorContext = createLogContext({ error: errorMessage })
+    logError('Error in updateUserProfile', errorContext)
     throw error
   }
 }
 
 export async function createOnboardingWorkspace(userId: string, data: WorkspaceData) {
   try {
-    log('🏗️ [createOnboardingWorkspace] Creating workspace:', data.name)
+    const context = createLogContext({ name: data.name })
+    log('Creating workspace', context)
 
     // Create the workspace
     const { data: workspace, error: workspaceError } = await supabase
@@ -79,7 +173,8 @@ export async function createOnboardingWorkspace(userId: string, data: WorkspaceD
       .single()
 
     if (workspaceError) {
-      logError('❌ [createOnboardingWorkspace] Error creating workspace:', workspaceError)
+      const errorContext = createLogContext({ error: workspaceError.message })
+      logError('Error creating workspace', errorContext)
       throw workspaceError
     }
 
@@ -93,21 +188,26 @@ export async function createOnboardingWorkspace(userId: string, data: WorkspaceD
       })
 
     if (memberError) {
-      logError('❌ [createOnboardingWorkspace] Error adding user as admin:', memberError)
+      const errorContext = createLogContext({ error: memberError.message })
+      logError('Error adding user as admin', errorContext)
       throw memberError
     }
 
-    log('✅ [createOnboardingWorkspace] Workspace created successfully:', workspace)
+    const successContext = createLogContext({ workspaceId: workspace.id })
+    log('Workspace created successfully', successContext)
     return workspace
   } catch (error) {
-    logError('❌ [createOnboardingWorkspace] Error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorContext = createLogContext({ error: errorMessage })
+    logError('Error in createOnboardingWorkspace', errorContext)
     throw error
   }
 }
 
 export async function createOnboardingChannel(workspaceId: string, userId: string, data: ChannelData) {
   try {
-    log('📢 [createOnboardingChannel] Creating channel:', data.name)
+    const context = createLogContext({ name: data.name })
+    log('Creating channel', context)
 
     // Get AI user
     const { data: aiUser } = await supabase
@@ -117,7 +217,8 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       .single();
 
     if (!aiUser) {
-      logError('AI user not found')
+      const errorContext = createLogContext({ error: 'AI user not found' })
+      logError('Error finding AI user', errorContext)
       throw new Error('AI user not found');
     }
 
@@ -134,7 +235,8 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       .single()
 
     if (channelError) {
-      logError('❌ [createOnboardingChannel] Error creating channel:', channelError)
+      const errorContext = createLogContext({ error: channelError.message })
+      logError('Error creating channel', errorContext)
       throw channelError
     }
 
@@ -148,7 +250,8 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       })
 
     if (memberError) {
-      logError('❌ [createOnboardingChannel] Error adding user as channel admin:', memberError)
+      const errorContext = createLogContext({ error: memberError.message })
+      logError('Error adding user as channel admin', errorContext)
       throw memberError
     }
 
@@ -162,7 +265,8 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       });
 
     if (aiMemberError) {
-      logError('Error adding AI to channel:', aiMemberError)
+      const errorContext = createLogContext({ error: aiMemberError.message })
+      logError('Error adding AI to channel', errorContext)
       throw aiMemberError;
     }
 
@@ -180,7 +284,8 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       .single()
 
     if (welcomeError) {
-      logError('❌ [createOnboardingChannel] Error creating welcome message:', welcomeError)
+      const errorContext = createLogContext({ error: welcomeError.message })
+      logError('Error creating welcome message', errorContext)
       throw welcomeError
     }
 
@@ -198,7 +303,8 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       .single()
 
     if (aiReplyError) {
-      logError('Error creating AI reply:', aiReplyError)
+      const errorContext = createLogContext({ error: aiReplyError.message })
+      logError('Error creating AI reply', errorContext)
       throw aiReplyError;
     }
 
@@ -215,10 +321,13 @@ export async function createOnboardingChannel(workspaceId: string, userId: strin
       await updateReaction(aiReply.id, aiUser.id, emoji);
     }
 
-    log('✅ [createOnboardingChannel] Channel created successfully:', channel)
+    const successContext = createLogContext({ channelId: channel.id })
+    log('Channel created successfully', successContext)
     return channel
   } catch (error) {
-    logError('❌ [createOnboardingChannel] Error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorContext = createLogContext({ error: errorMessage })
+    logError('Error in createOnboardingChannel', errorContext)
     throw error
   }
 } 

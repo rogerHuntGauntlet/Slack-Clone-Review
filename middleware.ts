@@ -1,6 +1,7 @@
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { ensureUniversalWorkspaceMembership } from './lib/supabase/onboarding'
 
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
@@ -44,8 +45,37 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
   const supabase = createMiddlewareClient({ req, res })
 
-  // Refresh session if expired - required for Server Components
-  await supabase.auth.getSession()
+  // Refresh session if expired
+  const { data: { session } } = await supabase.auth.getSession()
+
+  // If we have a session and user, ensure they're in the OHF Community workspace
+  if (session?.user) {
+    try {
+      // Run this in the background without blocking the response
+      ensureUniversalWorkspaceMembership(session.user.id).catch(error => {
+        console.error('Error ensuring workspace membership:', error)
+      })
+    } catch (error) {
+      // Log error but don't block the request
+      console.error('Error in workspace membership check:', error)
+    }
+  }
+
+  // Handle auth redirects
+  const isAuthPage = req.nextUrl.pathname.startsWith('/auth')
+  const isAccessPage = req.nextUrl.pathname.startsWith('/access')
+  
+  if (!session && !isAuthPage && !req.nextUrl.pathname.startsWith('/api')) {
+    // Redirect to login if no session
+    const redirectUrl = new URL('/auth', req.url)
+    redirectUrl.searchParams.set('redirectTo', req.nextUrl.pathname)
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  if (session?.redirectUrl && !isAccessPage) {
+    // Redirect to payment if needed
+    return NextResponse.redirect(new URL(session.redirectUrl, req.url))
+  }
 
   return res
 }

@@ -224,6 +224,30 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         }
 
         if (session && session.user) {
+          // Check for access records before proceeding
+          const { data: accessRecord } = await supabase
+            .from('access_records')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .eq('is_active', true)
+            .single();
+
+          // Check for active subscription
+          const { data: paymentRecord } = await supabase
+            .from('payment_records')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .eq('status', 'active')
+            .single();
+
+          const hasValidAccess = accessRecord || (paymentRecord && new Date(paymentRecord.current_period_end) > new Date());
+          
+          if (!hasValidAccess) {
+            logInfo('No valid access found, redirecting to /access')
+            router.push('/access')
+            return;
+          }
+
           setUser({
             id: session.user.id,
             email: session.user.email || '',
