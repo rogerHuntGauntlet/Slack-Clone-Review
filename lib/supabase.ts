@@ -3,7 +3,7 @@ import { Database } from '@/types/supabase'
 import type { MessageType, FileAttachment } from '../types/database'
 import type { RealtimePostgresChangesPayload } from '@supabase/realtime-js'
 import { logInfo, logError, logWarning, logDebug, type LogContext } from '@/lib/logger'
-import { createHash } from 'crypto'
+import { md5 } from './md5'
 
 // Helper function to safely cast unknown to string
 function safeString(value: unknown): string {
@@ -874,77 +874,50 @@ export const updateUserProfileId = async (oldEmail: string, newId: string) => {
   }
 };
 
-const md5 = (str: string) => createHash('md5').update(str).digest('hex');
-
 export const createUserProfile = async (user: { id: string; email?: string }) => {
   try {
-    if (!user.id) {
-      throw new Error('User ID is required to create a profile');
-    }
-
-    // First check if profile exists
-    const { data: existingProfile } = await supabase
+    logInfo('Creating user profile:', { userId: user.id })
+    const { data: existingProfile, error: fetchError } = await supabase
       .from('user_profiles')
       .select('*')
       .eq('id', user.id)
-      .single();
+      .single()
 
     if (existingProfile) {
-      // Ensure user is in universal workspace even if profile exists
-      await ensureUniversalWorkspace();
-      await addUserToUniversalWorkspace(user.id);
-      return existingProfile;
+      logInfo('Profile already exists:', { userId: user.id })
+      return existingProfile
     }
 
-    // Get user data from auth if email is not provided
-    let email: string;
-    if (!user.email) {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser?.email) {
-        throw new Error('Unable to get user email from auth');
-      }
-      email = authUser.email;
-    } else {
-      email = user.email;
-    }
+    // Generate avatar URL using Gravatar
+    const gravatarUrl = user.email
+      ? `https://www.gravatar.com/avatar/${md5(user.email.toLowerCase().trim())}?d=identicon`
+      : 'https://www.gravatar.com/avatar/default?d=identicon'
 
-    // Extract username from email
-    const username = email.split('@')[0];
-
-    // Create new profile
-    const { data: newProfile, error: insertError } = await supabase
+    const { data: profile, error: insertError } = await supabase
       .from('user_profiles')
-      .insert([{
+      .insert({
         id: user.id,
-        email,
-        username,
+        email: user.email,
+        username: user.email?.split('@')[0] || 'anonymous',
+        avatar_url: gravatarUrl,
         status: 'online',
-        avatar_url: `https://www.gravatar.com/avatar/${md5(email.toLowerCase())}?d=mp`
-      }])
+        last_seen: new Date().toISOString()
+      })
       .select()
-      .single();
+      .single()
 
     if (insertError) {
-      logError('Error creating user profile:', insertError);
-      throw insertError;
+      logError('Error creating profile:', { error: insertError })
+      throw insertError
     }
 
-    if (!newProfile) {
-      throw new Error('Failed to create user profile');
-    }
-
-    // Ensure universal workspace exists and add user to it
-    await ensureUniversalWorkspace();
-    await addUserToUniversalWorkspace(user.id);
-
-    logInfo('Created new user profile:', newProfile);
-    return newProfile;
+    logInfo('Profile created successfully:', { userId: user.id })
+    return profile
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logError('Error in createUserProfile:', createLogContext({ error: errorMessage }));
-    throw error;
+    logError('Error in createUserProfile:', { error })
+    throw error
   }
-};
+}
 
 export const getChannels = async (workspaceId: string, userId: string) => {
   try {

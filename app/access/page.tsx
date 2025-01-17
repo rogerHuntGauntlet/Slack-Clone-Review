@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { checkUserAccess } from '@/utils/checkAccess';
@@ -14,7 +14,7 @@ interface SessionCookie {
     user: { id: string };
 }
 
-export default function AccessPage() {
+function AccessPageContent() {
     const [code, setCode] = useState('');
     const [riddleAnswer, setRiddleAnswer] = useState('');
     const [termsAccepted, setTermsAccepted] = useState(false);
@@ -429,5 +429,13 @@ export default function AccessPage() {
                 )}
             </div>
         </div>
+    );
+}
+
+export default function AccessPage() {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <AccessPageContent />
+        </Suspense>
     );
 } 
