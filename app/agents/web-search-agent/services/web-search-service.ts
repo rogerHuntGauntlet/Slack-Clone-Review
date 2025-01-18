@@ -90,4 +90,5 @@ class WebSearchService {
   }
 }
 
-export default WebSearchService; 
+// Export as singleton instance
+export const webSearchService = new WebSearchService(); 
