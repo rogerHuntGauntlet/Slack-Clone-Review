@@ -9,8 +9,11 @@ export async function GET(request: Request) {
   if (code) {
     const supabase = createRouteHandlerClient({ cookies })
     await supabase.auth.exchangeCodeForSession(code)
+    
+    // After exchanging the code, immediately redirect to access page
+    return NextResponse.redirect(new URL('/access', requestUrl.origin))
   }
 
-  // URL to redirect to after sign in process completes
-  return NextResponse.redirect(new URL('/platform', requestUrl.origin))
+  // No auth code, redirect to auth page
+  return NextResponse.redirect(new URL('/auth', requestUrl.origin))
 } 
