@@ -14,7 +14,8 @@ import {
   testDatabaseTables,
   updateUserProfileId,
   addUserToUniversalWorkspace,
-  sendMessage
+  sendMessage,
+  updateWorkspace
 } from '../../lib/supabase'
 import Sidebar from '../../components/Sidebar'
 import ChatArea from '../../components/ChatArea'
@@ -107,6 +108,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showSearchResults, setShowSearchResults] = useState(false)
   const [isDMListCollapsed, setIsDMListCollapsed] = useState(false)
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null)
 
   // Add mobile-specific states
   const isMobile = useMediaQuery('(max-width: 768px)')
@@ -644,10 +646,62 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
 
       logInfo('Search results found', { count: data?.length || 0 })
       setSearchResults(data || []);
-      setShowSearchResults(true);
+      return data || [];
     } catch (error) {
       logError('Error searching messages', { error: error instanceof Error ? error.message : String(error) })
       setError('Failed to search messages');
+      return [];
+    }
+  };
+
+  const handleSearchResultClick = async (result: {
+    id: string;
+    channel_id: string;
+    channels: { name: string };
+  }) => {
+    try {
+      // Switch to the correct channel first
+      setActiveChannel(result.channel_id);
+      setActiveDM(null);
+
+      // Fetch messages around the selected message
+      const { data: contextMessages, error } = await supabase
+        .from('messages')
+        .select(`
+          id,
+          content,
+          created_at,
+          channel_id,
+          user_id,
+          parent_id,
+          file_attachments,
+          reactions,
+          user_profiles!messages_user_id_fkey (
+            username,
+            email
+          )
+        `)
+        .eq('channel_id', result.channel_id)
+        .order('created_at', { ascending: true })
+        .limit(9) // Get 9 messages total (4 before, target message, 4 after)
+        .filter('created_at', 'lte', (await supabase
+          .from('messages')
+          .select('created_at')
+          .eq('id', result.id)
+          .single()
+        ).data?.created_at)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Set these messages in the chat area
+      setMessages(contextMessages?.reverse() || []);
+      
+      // Close search results
+      setSearchQuery('');
+    } catch (error) {
+      logError('Error loading message context', { error: error instanceof Error ? error.message : String(error) });
+      setError('Failed to load message context');
     }
   };
 
@@ -696,6 +750,69 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     }
   }
 
+  const handleTogglePublic = async (workspaceId: string) => {
+    try {
+      // Find the workspace
+      const workspace = workspaces.find(w => w.id === workspaceId) as Workspace
+      if (!workspace) {
+        throw new Error('Workspace not found')
+      }
+
+      // Check if user is admin
+      const { data: memberData, error: memberError } = await supabase
+        .from('workspace_members')
+        .select('role')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', user?.id)
+        .single()
+
+      if (memberError || !memberData || memberData.role !== 'admin') {
+        throw new Error('Only workspace admins can change visibility settings')
+      }
+
+      // Toggle the public status
+      const updatedWorkspace = await updateWorkspace(workspaceId, {
+        is_public: !workspace.is_public
+      })
+
+      // Update the workspaces list
+      setWorkspaces(workspaces.map(w => 
+        w.id === workspaceId 
+          ? { ...w, is_public: !workspace.is_public }
+          : w
+      ))
+
+      setSuccess(`Workspace is now ${!workspace.is_public ? 'public' : 'private'}`)
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (error) {
+      logError('Error toggling workspace public status:', { error: error instanceof Error ? error.message : String(error) })
+      setError(error instanceof Error ? error.message : 'Failed to update workspace visibility. Please try again.')
+      setTimeout(() => setError(null), 3000)
+    }
+  }
+
+  const handleUpdateDescription = async (workspaceId: string, description: string) => {
+    try {
+      await updateWorkspace(workspaceId, { description });
+      const updatedWorkspaces = await getWorkspaces(user?.id);
+      setWorkspaces(updatedWorkspaces);
+      setSuccess('Description updated successfully');
+    } catch (error) {
+      setError('Failed to update description');
+    }
+  };
+
+  // Add effect to fetch workspace name when active workspace changes
+  useEffect(() => {
+    if (activeWorkspace) {
+      fetchWorkspaceName(activeWorkspace).then(name => {
+        setWorkspaceName(name);
+      });
+    } else {
+      setWorkspaceName(null);
+    }
+  }, [activeWorkspace]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-r from-pink-300 to-blue-300 dark:from-pink-900 dark:to-blue-900">
@@ -738,10 +855,13 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
         onToggleFavorite={(workspaceId) => {
           logInfo('Toggle favorite', { action: 'toggleFavorite', workspaceId })
         }}
+        onTogglePublic={handleTogglePublic}
+        onUpdateDescription={handleUpdateDescription}
         isMobile={isMobile}
         error={error}
         success={success}
         isCreatingWorkspace={isCreatingWorkspace}
+        currentUserId={user?.id || ''}
       />
     )
   }
@@ -758,7 +878,9 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
           onLogout={handleLogout}
           onReturnToWorkspaceSelection={handleReturnToWorkspaceSelection}
           activeWorkspaceId={activeWorkspace}
+          workspaceName={workspaceName || undefined}
           onSearch={handleSearch}
+          onSearchResultClick={handleSearchResultClick}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           isMobile={true}
@@ -923,7 +1045,9 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
           onLogout={handleLogout}
           onReturnToWorkspaceSelection={handleReturnToWorkspaceSelection}
           activeWorkspaceId={activeWorkspace}
+          workspaceName={workspaceName || undefined}
           onSearch={handleSearch}
+          onSearchResultClick={handleSearchResultClick}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
         />

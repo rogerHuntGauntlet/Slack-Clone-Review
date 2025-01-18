@@ -1,58 +1,137 @@
 import { FC, useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, PauseCircle, PlayCircle, ChevronLeft } from 'lucide-react'
+import { ChevronDown, ChevronRight, PauseCircle, PlayCircle, ChevronLeft, UserPlus, Bot } from 'lucide-react'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import type { Database } from '@/types/supabase'
 
-interface ActivityMessage {
+type Tables = Database['public']['Tables']
+type UserProfile = Tables['user_profiles']['Row']
+
+interface ActivityItem {
   id: string
+  type: 'new_user' | 'new_agent'
   content: string
   timestamp: Date
+  details: {
+    name: string
+    avatar_url?: string | null
+  }
 }
 
-const SAMPLE_MESSAGES = [
-  "Team collaboration is increasing in the #general channel",
-  "Several important decisions were made in the #project-alpha discussion",
-  "The development team has been actively sharing code snippets",
-  "Good engagement in the recent technical discussion",
-  "Team members are effectively using thread discussions",
-  "Knowledge sharing is happening across multiple channels",
-  "The team is maintaining a positive and constructive dialogue",
-  "Important updates are being well-documented in the channels",
-  "Cross-team collaboration is evident in recent discussions",
-  "Team members are providing helpful feedback to each other"
-]
+interface Agent {
+  id: string
+  name: string
+  created_at: string
+}
 
 interface ActivityFeedProps {
   className?: string;
 }
 
 const ActivityFeed: FC<ActivityFeedProps> = ({ className = '' }) => {
-  const [messages, setMessages] = useState<ActivityMessage[]>([])
+  const [activities, setActivities] = useState<ActivityItem[]>([])
   const [isPaused, setIsPaused] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const supabase = createClientComponentClient()
 
   useEffect(() => {
-    // Generate initial message
-    addRandomMessage()
+    // Set up realtime subscriptions for new users and agents
+    const channel = supabase.channel('activity_feed')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'user_profiles'
+        },
+        (payload: { new: UserProfile }) => {
+          if (!isPaused) {
+            const newUser: ActivityItem = {
+              id: payload.new.id,
+              type: 'new_user',
+              content: 'New user joined the platform',
+              timestamp: new Date(),
+              details: {
+                name: payload.new.username || payload.new.email?.split('@')[0] || 'Anonymous',
+                avatar_url: payload.new.avatar_url
+              }
+            }
+            setActivities(prev => [...prev.slice(-19), newUser])
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'agents'
+        },
+        (payload: { new: Agent }) => {
+          if (!isPaused) {
+            const newAgent: ActivityItem = {
+              id: payload.new.id,
+              type: 'new_agent',
+              content: 'New agent created',
+              timestamp: new Date(),
+              details: {
+                name: payload.new.name || 'Unnamed Agent'
+              }
+            }
+            setActivities(prev => [...prev.slice(-19), newAgent])
+          }
+        }
+      )
+      .subscribe()
 
-    // Set up interval for new messages if not paused
-    const interval = setInterval(() => {
-      if (!isPaused) {
-        addRandomMessage()
-      }
-    }, 30000) // 30 seconds
+    // Fetch initial activities
+    const fetchInitialActivities = async () => {
+      const { data: users } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .order('id', { ascending: false })
+        .limit(10)
 
-    return () => clearInterval(interval)
-  }, [isPaused])
+      const { data: agents } = await supabase
+        .from('agents')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10)
 
-  const addRandomMessage = () => {
-    const randomMessage = SAMPLE_MESSAGES[Math.floor(Math.random() * SAMPLE_MESSAGES.length)]
-    const timestamp = new Date()
-    const newMessage: ActivityMessage = {
-      id: `${timestamp.getTime()}-${Math.random().toString(36).substr(2, 9)}`,
-      content: randomMessage,
-      timestamp
+      const userActivities: ActivityItem[] = (users || []).map((user: UserProfile) => ({
+        id: user.id,
+        type: 'new_user',
+        content: 'New user joined the platform',
+        timestamp: new Date(),
+        details: {
+          name: user.username || user.email?.split('@')[0] || 'Anonymous',
+          avatar_url: user.avatar_url
+        }
+      }))
+
+      const agentActivities: ActivityItem[] = (agents || []).map((agent: Agent) => ({
+        id: agent.id,
+        type: 'new_agent',
+        content: 'New agent created',
+        timestamp: new Date(agent.created_at),
+        details: {
+          name: agent.name || 'Unnamed Agent'
+        }
+      }))
+
+      // Combine and sort by timestamp
+      const allActivities = [...userActivities, ...agentActivities]
+        .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+        .slice(0, 20)
+
+      setActivities(allActivities)
     }
-    setMessages(prev => [...prev.slice(-9), newMessage]) // Keep last 10 messages
-  }
+
+    fetchInitialActivities()
+
+    return () => {
+      channel.unsubscribe()
+    }
+  }, [isPaused])
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-US', { 
@@ -76,7 +155,7 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '' }) => {
               <ChevronRight className="w-5 h-5 text-gray-500 dark:text-gray-400" />
             }
           </button>
-          {!isCollapsed && <h2 className="text-lg font-semibold text-gray-900 dark:text-white">AI Feed</h2>}
+          {!isCollapsed && <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Activity Feed</h2>}
         </div>
         {!isCollapsed && (
           <button
@@ -89,20 +168,34 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '' }) => {
       </div>
       {!isCollapsed && (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.map((message) => (
+          {activities.map((activity) => (
             <div 
-              key={message.id} 
+              key={activity.id} 
               className="bg-white dark:bg-gray-700/50 rounded-lg p-3 shadow-sm"
             >
-              <p className="text-gray-700 dark:text-gray-200 text-sm">{message.content}</p>
+              <div className="flex items-center gap-2">
+                {activity.type === 'new_user' ? (
+                  <UserPlus className="w-5 h-5 text-blue-500" />
+                ) : (
+                  <Bot className="w-5 h-5 text-purple-500" />
+                )}
+                <div className="flex-1">
+                  <p className="text-gray-700 dark:text-gray-200 text-sm font-medium">
+                    {activity.details.name}
+                  </p>
+                  <p className="text-gray-600 dark:text-gray-300 text-sm">
+                    {activity.content}
+                  </p>
+                </div>
+              </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {formatTime(message.timestamp)}
+                {formatTime(activity.timestamp)}
               </p>
             </div>
           ))}
-          {messages.length === 0 && (
+          {activities.length === 0 && (
             <div className="text-sm text-gray-400 text-center p-4">
-              Waiting for activity updates...
+              No recent activity...
             </div>
           )}
         </div>

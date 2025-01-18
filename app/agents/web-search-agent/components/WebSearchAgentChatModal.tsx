@@ -1,9 +1,58 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Minimize2, Maximize2, Volume2, VolumeX } from 'lucide-react';
+import { X, Minimize2, Maximize2, Volume2, VolumeX, Mic, MicOff, Move } from 'lucide-react';
 import { AnimatedAvatar } from '@/components/AnimatedAvatar';
 import { webSearchAgentService } from '../services/web-search-agent-service';
+import { WebSearchStorageService, WebSearchMessage } from '../services/web-search-storage-service';
+import { useWebSearch } from '../hooks';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import type { Components } from 'react-markdown';
+
+// Update SpeechRecognition type declarations
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+interface SpeechRecognitionResult {
+  0: SpeechRecognitionAlternative;
+  length: number;
+  isFinal: boolean;
+}
+
+interface SpeechRecognitionResultList {
+  length: number;
+  item(index: number): SpeechRecognitionResult;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionError extends Event {
+  error: string;
+}
+
+interface CustomSpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  onend: ((ev: Event) => void) | null;
+  onerror: ((ev: SpeechRecognitionError) => void) | null;
+  onresult: ((ev: SpeechRecognitionEvent) => void) | null;
+  start: () => void;
+  stop: () => void;
+}
 
 interface WebSearchAgentChatModalProps {
   isOpen: boolean;
@@ -16,18 +65,26 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
   onClose,
   agentId,
 }) => {
-  const [messages, setMessages] = useState<Array<{
+  const { 
+    search, 
+    results: searchResults, 
+    isLoading: isSearching,
+    error: searchError,
+    settings,
+    updateSettings,
+    cacheStats
+  } = useWebSearch();
+
+  const [messages, setMessages] = useState<WebSearchMessage[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{
     id: string;
-    content: string;
-    role: 'user' | 'assistant';
-    timestamp: Date;
-    citations?: Array<{
-      url: string;
-      title: string;
-      snippet: string;
-      relevanceScore: number;
-    }>;
+    name: string;
+    type: string;
+    size: number;
+    url: string;
   }>>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingPhase, setLoadingPhase] = useState<'rag' | 'llm' | 'summarizing' | 'websearch' | 'streaming' | null>(null);
@@ -44,6 +101,21 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
   const [ragError, setRagError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<CustomSpeechRecognition | null>(null);
+  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [countdownProgress, setCountdownProgress] = useState(0);
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [showAutoSendNotification, setShowAutoSendNotification] = useState(false);
+  const storageServiceRef = useRef<WebSearchStorageService | null>(null);
+  const [avatarPosition, setAvatarPosition] = useState({ x: 20, y: 20 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartPosition = useRef({ x: 0, y: 0 });
+  const dragStartOffset = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    storageServiceRef.current = new WebSearchStorageService(agentId);
+  }, [agentId]);
 
   // Function to scroll to bottom of chat
   const scrollToBottom = (behavior: 'auto' | 'smooth' = 'smooth') => {
@@ -204,117 +276,313 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
     }
   }, [agentName, isRagEnabled, isMuted, messages.length]);
 
+  // Update loading phase when search is in progress
+  useEffect(() => {
+    if (isSearching) {
+      setLoadingPhase('websearch');
+    } else if (loadingPhase === 'websearch') {
+      setLoadingPhase(null);
+    }
+  }, [isSearching, loadingPhase]);
+
+  // Handle search errors
+  useEffect(() => {
+    if (searchError) {
+      const errorMessage: WebSearchMessage = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Error during web search: ${searchError}`,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    }
+  }, [searchError]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
 
-    const userMessage = {
+    const userMessage: WebSearchMessage = {
       id: Date.now().toString(),
+      role: 'user',
       content: inputValue,
-      role: 'user' as const,
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
-    setAvatarEmotion('thinking');
-    setIsAvatarSpeaking(false);
-    setCurrentSummary('');
-
-    // Create a placeholder for the assistant's response
-    const assistantMessageId = (Date.now() + 1).toString();
-    const assistantMessage = {
-      id: assistantMessageId,
-      content: '',
-      role: 'assistant' as const,
-      timestamp: new Date()
-    };
-    setMessages(prev => [...prev, assistantMessage]);
-    scrollToBottom('auto');
+    setLoadingPhase('websearch');
 
     try {
-      let response;
-      if (isRagMode && isRagEnabled) {
-        response = await webSearchAgentService.sendMessage(
-          inputValue, 
-          true,
-          (phase) => {
-            setLoadingPhase(phase);
-            if (phase === 'summarizing') {
-              setAvatarEmotion('thinking');
-            } else if (phase === 'streaming') {
-              setAvatarEmotion('happy');
-            }
-          }
-        );
-      } else {
-        response = await webSearchAgentService.sendMessage(
-          inputValue, 
-          false,
-          (phase) => {
-            setLoadingPhase(phase);
-            if (phase === 'streaming') {
-              setAvatarEmotion('happy');
-            }
-          }
-        );
-      }
-      
-      // Update message and reset loading states immediately after getting response
-      setMessages(prev => prev.map(msg => 
-        msg.id === assistantMessageId
-          ? { ...msg, content: response.content, citations: response.citations }
-          : msg
-      ));
-      setIsLoading(false);
-      setLoadingPhase(null);
-      setAvatarEmotion('happy');
-      scrollToBottom('smooth');
+      // Perform web search
+      await search(inputValue);
 
-      // Start voice synthesis after updating UI
-      speakWithWebSpeech(response.content, response.citations).catch(error => {
-        console.error('Error in voice synthesis:', error);
-        setIsAvatarSpeaking(false);
-        setAvatarEmotion('neutral');
-      });
+      // Use the search results in the agent's response
+      const response = await webSearchAgentService.sendMessage(inputValue, false);
+      
+      const assistantMessage: WebSearchMessage = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: response.content,
+        timestamp: new Date(),
+        citations: response.citations
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+      
+      // Speak the response if speech is enabled
+      if (!isMuted) {
+        await speakWithWebSpeech(response.content, searchResults);
+      }
+
+      // Store the conversation
+      if (storageServiceRef.current) {
+        await storageServiceRef.current.storeMessage(userMessage);
+        await storageServiceRef.current.storeMessage(assistantMessage);
+      }
 
     } catch (error) {
       console.error('Error in chat:', error);
-      setAvatarEmotion('surprised');
-      
-      setMessages(prev => prev.map(msg => 
-        msg.id === assistantMessageId
-          ? {
-              ...msg,
-              content: error instanceof Error ? error.message : "I'm sorry, I encountered an error. Please try again."
-            }
-          : msg
-      ));
-      
-      setTimeout(() => setAvatarEmotion('neutral'), 2000);
+      const errorMessage: WebSearchMessage = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Sorry, there was an error processing your request.',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
-      // Ensure loading states are reset even if there's an error
       setIsLoading(false);
       setLoadingPhase(null);
     }
   };
 
+  // Initialize speech recognition
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognitionConstructor = window.webkitSpeechRecognition || window.SpeechRecognition;
+      const recognition = new SpeechRecognitionConstructor() as unknown as CustomSpeechRecognition;
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognitionRef.current = recognition;
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        // Clear any existing timeouts when new speech is detected
+        if (silenceTimeoutRef.current) {
+          clearTimeout(silenceTimeoutRef.current);
+        }
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+        }
+        setCountdownProgress(0);
+
+        const transcript = Array.from(event.results)
+          .map(result => result[0].transcript)
+          .join('');
+        setInputValue(transcript);
+
+        // Start countdown and set timeout for silence detection
+        if (transcript.trim()) {
+          let progress = 0;
+          countdownIntervalRef.current = setInterval(() => {
+            progress += 1;
+            setCountdownProgress(Math.min(progress, 100));
+          }, 20); // Update every 20ms for smooth animation
+
+          silenceTimeoutRef.current = setTimeout(() => {
+            if (isListening && transcript.trim()) {
+              if (countdownIntervalRef.current) {
+                clearInterval(countdownIntervalRef.current);
+              }
+              recognitionRef.current?.stop();
+              setAvatarEmotion('happy');
+              setShowAutoSendNotification(true);
+              
+              // Create a proper form submit event
+              const form = document.querySelector('form');
+              if (form) {
+                const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                form.dispatchEvent(submitEvent);
+              }
+              
+              // Hide notification after send
+              setTimeout(() => setShowAutoSendNotification(false), 2000);
+            }
+          }, 2000);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        setCountdownProgress(0);
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        setCountdownProgress(0);
+        // Clear any existing timeouts when speech recognition ends
+        if (silenceTimeoutRef.current) {
+          clearTimeout(silenceTimeoutRef.current);
+        }
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+        }
+      };
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+      setCountdownProgress(0);
+    };
+  }, [handleSubmit]);
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      console.error('Speech recognition not supported');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+      setCountdownProgress(0);
+    } else {
+      setInputValue('');
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach(file => {
+        formData.append('files', file);
+      });
+      formData.append('agentId', agentId);
+
+      const response = await fetch('/api/agents/web-search-agent/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload files');
+      }
+
+      const uploadedFileData = await response.json();
+      setUploadedFiles(prev => [...prev, ...uploadedFileData]);
+
+      // Add a system message about the uploaded files
+      const fileNames = Array.from(files).map(f => f.name).join(', ');
+      const systemMessage = {
+        id: Date.now().toString(),
+        content: `Files uploaded: ${fileNames}. I'll analyze these for our conversation.`,
+        role: 'assistant' as const,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, systemMessage]);
+    } catch (error) {
+      console.error('Error uploading files:', error);
+      const errorMessage = {
+        id: Date.now().toString(),
+        content: 'Sorry, there was an error uploading the files. Please try again.',
+        role: 'assistant' as const,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleDragStart = (e: React.MouseEvent<HTMLDivElement>) => {
+    setIsDragging(true);
+    dragStartPosition.current = {
+      x: e.clientX,
+      y: e.clientY
+    };
+    dragStartOffset.current = {
+      x: avatarPosition.x,
+      y: avatarPosition.y
+    };
+  };
+
+  const handleDrag = (e: MouseEvent) => {
+    if (!isDragging) return;
+
+    const deltaX = e.clientX - dragStartPosition.current.x;
+    const deltaY = e.clientY - dragStartPosition.current.y;
+
+    setAvatarPosition({
+      x: dragStartOffset.current.x + deltaX,
+      y: dragStartOffset.current.y + deltaY
+    });
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleDrag);
+      window.addEventListener('mouseup', handleDragEnd);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleDrag);
+      window.removeEventListener('mouseup', handleDragEnd);
+    };
+  }, [isDragging]);
+
   return isOpen ? (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[80vh] rounded-lg shadow-xl flex flex-col relative">
-        {/* Audio Element */}
-        <audio ref={audioRef} />
-        
-        {/* Avatar Overlay */}
+      {/* Avatar Overlay - Now draggable */}
+      <div 
+        className="absolute"
+        style={{
+          left: avatarPosition.x,
+          top: avatarPosition.y,
+          zIndex: 60,
+          cursor: isDragging ? 'grabbing' : 'grab'
+        }}
+      >
         <div 
-          className={`absolute left-4 top-4 transition-all duration-300 ease-in-out ${
+          className={`transition-all duration-300 ease-in-out ${
             isAvatarCollapsed ? 'w-16 h-16' : 'w-[200px] h-[200px]'
           }`}
         >
           <div className="relative w-full h-full">
             <div className="absolute inset-0 bg-gray-900/15 backdrop-blur-sm rounded-lg" />
-            <div className="relative w-full h-full flex flex-col">
+            <div 
+              className="relative w-full h-full flex flex-col"
+              onMouseDown={handleDragStart}
+            >
               <div className={`${isAvatarCollapsed ? 'scale-75' : 'scale-100'} transition-transform duration-300`}>
                 <AnimatedAvatar 
                   speaking={isAvatarSpeaking}
@@ -336,6 +604,12 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
                   </button>
                 </>
               )}
+              <button
+                className="absolute top-2 left-2 p-1.5 bg-gray-800/80 text-white rounded-full hover:bg-gray-700 transition-colors"
+                title="Drag to move"
+              >
+                <Move size={14} />
+              </button>
             </div>
             <button
               onClick={() => setIsAvatarCollapsed(!isAvatarCollapsed)}
@@ -349,10 +623,17 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[80vh] rounded-lg shadow-xl flex flex-col relative">
+        {/* Audio Element */}
+        <audio ref={audioRef} />
 
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
-          <h2 className="text-xl font-semibold ml-[220px]">Chat with {agentName}</h2>
+          <div className="flex items-center space-x-4">
+            <h2 className="text-xl font-semibold">Chat with {agentName}</h2>
+          </div>
           <div className="flex items-center space-x-4">
             {isCheckingRag ? (
               <div className="flex items-center space-x-2">
@@ -414,9 +695,9 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
                       : 'bg-gray-100 dark:bg-gray-700'
                   }`}
                 >
-                  <div className="prose dark:prose-invert">
+                  <div className="prose dark:prose-invert max-w-none">
                     {message.role === 'assistant' && (
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center justify-between gap-2 mb-2">
                         <span className={`text-xs px-2 py-0.5 rounded ${
                           message.citations ? 
                           'bg-green-500/10 text-green-600 dark:text-green-400' : 
@@ -424,9 +705,40 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
                         }`}>
                           {message.citations ? 'Web Search' : 'Chat'}
                         </span>
+                        <button
+                          onClick={() => storageServiceRef.current?.storeMessage(message)}
+                          className="text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-colors"
+                        >
+                          Save to Agent Memory
+                        </button>
                       </div>
                     )}
-                    {message.content}
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeHighlight]}
+                      className={`${message.role === 'user' ? 'text-white' : 'text-gray-900 dark:text-gray-100'}`}
+                      components={{
+                        p: ({children, ...props}) => <p className="mb-2 last:mb-0" {...props}>{children}</p>,
+                        a: ({children, href, ...props}) => (
+                          <a href={href} className="text-blue-400 hover:underline" {...props}>{children}</a>
+                        ),
+                        ul: ({children, ...props}) => <ul className="list-disc pl-4 mb-2" {...props}>{children}</ul>,
+                        ol: ({children, ...props}) => <ol className="list-decimal pl-4 mb-2" {...props}>{children}</ol>,
+                        li: ({children, ...props}) => <li className="mb-1" {...props}>{children}</li>,
+                        code: ({node, className, ...props}) => {
+                          const isInline = !className;
+                          return isInline ? (
+                            <code className="bg-black/10 dark:bg-white/10 rounded px-1" {...props} />
+                          ) : (
+                            <code className="block bg-black/10 dark:bg-white/10 rounded p-2 my-2 overflow-x-auto" {...props} />
+                          );
+                        },
+                        pre: ({children, ...props}) => <pre className="bg-black/10 dark:bg-white/10 rounded p-2 my-2 overflow-x-auto" {...props}>{children}</pre>,
+                        blockquote: ({children, ...props}) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 my-2" {...props}>{children}</blockquote>,
+                      } as Components}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
                     {message.citations && message.citations.length > 0 && (
                       <div className="mt-2 text-sm border-t border-gray-200 dark:border-gray-600 pt-2">
                         <p className="font-medium mb-1">Sources:</p>
@@ -526,15 +838,91 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
 
           {/* Input Area */}
           <form onSubmit={handleSubmit} className="mt-4">
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Type your message..."
-                className="flex-1 p-2 border dark:border-gray-600 rounded-lg bg-transparent"
-                disabled={isLoading}
-              />
+            <div className="flex items-center space-x-2">
+              <div className="flex-1 flex items-center space-x-2 p-2 border dark:border-gray-600 rounded-lg bg-transparent">
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Type your message..."
+                  className="flex-1 bg-transparent outline-none"
+                  disabled={isLoading}
+                />
+                <div className="flex items-center space-x-2">
+                  <div className="relative">
+                    {showAutoSendNotification && (
+                      <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-3 py-1 rounded-full text-sm whitespace-nowrap animate-fade-in-out">
+                        Auto-sending message...
+                      </div>
+                    )}
+                    {isListening && countdownProgress > 0 && (
+                      <div className="absolute inset-0 rounded-full">
+                        <svg className="w-9 h-9" viewBox="0 0 36 36">
+                          <circle
+                            stroke="currentColor"
+                            strokeOpacity="0.2"
+                            fill="none"
+                            cx="18"
+                            cy="18"
+                            r="16"
+                            strokeWidth="2"
+                          />
+                          <circle
+                            stroke="currentColor"
+                            strokeLinecap="round"
+                            fill="none"
+                            cx="18"
+                            cy="18"
+                            r="16"
+                            strokeWidth="2"
+                            strokeDasharray={`${countdownProgress}, 100`}
+                            transform="rotate(-90 18 18)"
+                            className="text-red-500"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={toggleListening}
+                      className={`p-2 rounded-full transition-colors relative z-10 ${
+                        isListening 
+                          ? 'text-red-500 hover:bg-red-500/10' 
+                          : 'text-gray-500 hover:bg-gray-500/10'
+                      }`}
+                      disabled={isLoading}
+                    >
+                      {isListening ? <MicOff size={20} /> : <Mic size={20} />}
+                    </button>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    accept=".pdf,.doc,.docx,.txt,.md"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading || isLoading}
+                    className={`p-2 rounded-full transition-colors relative z-10 ${
+                      isUploading 
+                        ? 'text-blue-500' 
+                        : 'text-gray-500 hover:bg-gray-500/10'
+                    }`}
+                  >
+                    {isUploading ? (
+                      <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
               <button
                 type="submit"
                 disabled={isLoading}

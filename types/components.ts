@@ -7,13 +7,16 @@ export interface BaseProps {
 export interface WorkspaceListProps extends BaseProps {
   workspaces: Workspace[]
   onSelectWorkspace: (workspaceId: string) => void
-  onCreateWorkspace: (e: React.FormEvent) => Promise<void>
+  onCreateWorkspace: (e: React.FormEvent, isPublic: boolean) => Promise<void>
   newWorkspaceName: string
   setNewWorkspaceName: (name: string) => void
   onToggleFavorite: (workspaceId: string) => void
+  onTogglePublic: (workspaceId: string) => void
   error?: string | null
   success?: string | null
   isCreatingWorkspace?: boolean
+  currentUserId: string
+  onUpdateDescription: (workspaceId: string, description: string) => void
 }
 
 export interface HeaderProps extends BaseProps {
@@ -25,7 +28,27 @@ export interface HeaderProps extends BaseProps {
   onLogout: () => Promise<void>
   onReturnToWorkspaceSelection: () => void
   activeWorkspaceId: string
-  onSearch: (query: string) => void
+  workspaceName?: string
+  onSearch: (query: string) => Promise<Array<{
+    id: string;
+    content: string;
+    channel_id: string;
+    user_id: string;
+    channels: {
+      id: string;
+      name: string;
+    };
+    user_profiles: {
+      username: string;
+      email: string;
+    };
+    created_at: string;
+  }>>
+  onSearchResultClick: (result: {
+    id: string;
+    channel_id: string;
+    channels: { name: string };
+  }) => Promise<void>
   searchQuery: string
   setSearchQuery: (query: string) => void
   onMenuToggle?: () => void

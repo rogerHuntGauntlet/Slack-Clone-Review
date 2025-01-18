@@ -4,20 +4,21 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Minimize2, Maximize2, Volume2, VolumeX } from 'lucide-react'
 import { AnimatedAvatar } from '@/components/AnimatedAvatar'
 import { sendMessageToAgent, getAgentChatHistory } from '../services/agent-chat-service'
-import { WebSearchAgentChatModal } from '../web-search-agent/components/WebSearchAgentChatModal'
 
 interface AgentChatModalProps {
   agentId: string
   agentName: string
   onClose: () => void
   pineconeNamespace?: string
+  onWebSearchClick?: () => void
 }
 
 export default function AgentChatModal({ 
   agentId, 
   agentName,
   onClose,
-  pineconeNamespace 
+  pineconeNamespace,
+  onWebSearchClick
 }: AgentChatModalProps) {
   const [messages, setMessages] = useState<Array<{
     id: string
@@ -39,7 +40,6 @@ export default function AgentChatModal({
   const [isAvatarCollapsed, setIsAvatarCollapsed] = useState(false)
   const [currentSummary, setCurrentSummary] = useState<string>('')
   const [isMuted, setIsMuted] = useState(false)
-  const [showWebSearchModal, setShowWebSearchModal] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
@@ -459,7 +459,7 @@ export default function AgentChatModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+    <div className="w-full h-full flex items-center justify-center">
       <div className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[80vh] rounded-lg shadow-xl flex flex-col relative">
         {/* Audio Element */}
         <audio ref={audioRef} />
@@ -519,7 +519,7 @@ export default function AgentChatModal({
                   agentName,
                   pineconeNamespace
                 });
-                setShowWebSearchModal(true);
+                onWebSearchClick?.();
               }}
               className="px-3 py-1.5 text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-colors duration-200 flex items-center space-x-1"
             >
@@ -546,15 +546,6 @@ export default function AgentChatModal({
             </button>
           </div>
         </div>
-
-        {/* Web Search Modal */}
-        {showWebSearchModal && (
-          <WebSearchAgentChatModal
-            isOpen={showWebSearchModal}
-            onClose={() => setShowWebSearchModal(false)}
-            agentId={agentId}
-          />
-        )}
 
         {/* Chat Area */}
         <div className="flex-1 flex flex-col p-4 overflow-hidden">

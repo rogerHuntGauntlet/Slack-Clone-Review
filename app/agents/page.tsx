@@ -10,6 +10,12 @@ import { CreateAgentDTO, Agent } from './types/agent-types';
 import { AgentModal } from './components/AgentModal';
 import { createAgent } from './services/agent-service';
 
+interface AgentChatMessage {
+  role: 'user' | 'agent';
+  content: string;
+  timestamp: string;
+}
+
 export default function AgentsPage() {
   const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -178,7 +184,7 @@ export default function AgentsPage() {
     }
   };
 
-  const handleCreateAgentFromChat = (chatLog: string) => {
+  const handleCreateAgentFromChat = async (chatLog: string) => {
     console.log('Starting handleCreateAgentFromChat with chat log length:', chatLog.length);
     
     // Extract metadata if present

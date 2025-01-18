@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession } from '@supabase/auth-helpers-react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { toast } from 'react-hot-toast';
@@ -32,7 +32,7 @@ interface MessageWithUserProfile extends MessageType {
   user_profiles: {
     id: string;
     username: string;
-    avatar_url: string;
+    avatar_url: string | null;
   };
 }
 
@@ -159,6 +159,22 @@ interface Channel {
   name: string;
 }
 
+interface DatabaseMessage {
+  id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+  channel_id: string;
+  parent_id: string | null;
+  user_profiles: {
+    id: string;
+    username: string;
+    avatar_url: string | null;
+  };
+  reactions?: { [emoji: string]: string[] };
+}
+
 const ChatArea: React.FC<ChatAreaProps> = ({ 
   activeWorkspace,
   activeChannel,
@@ -233,6 +249,118 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const [recordingTime, setRecordingTime] = useState(0);
   const [recordingChunks, setRecordingChunks] = useState<Blob[]>([]);
 
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const PAGE_SIZE = 10;
+
+  const fetchMessages = useCallback(async (channelId: string, olderThan?: string): Promise<MessageType[] | null> => {
+    if (!channelId) return null;
+
+    try {
+      const query = supabase
+        .from('messages')
+        .select(`
+          *,
+          user_profiles!messages_user_id_fkey (
+            id,
+            username,
+            avatar_url
+          )
+        `)
+        .eq('channel_id', channelId)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
+
+      // Add olderThan condition if provided
+      if (olderThan) {
+        query.lt('created_at', olderThan);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error fetching messages:', error);
+        toast.error('Failed to load messages');
+        return null;
+      }
+
+      // Transform and reverse the data to maintain chronological order
+      const transformedData = (data as DatabaseMessage[] || []).map(message => {
+        const transformedMessage: MessageType = {
+          id: message.id,
+          content: message.content,
+          created_at: message.created_at,
+          updated_at: message.updated_at || message.created_at,
+          user_id: message.user_id,
+          channel_id: channelId,
+          parent_id: message.parent_id,
+          user: {
+            id: message.user_profiles.id,
+            username: message.user_profiles.username,
+            avatar_url: message.user_profiles.avatar_url
+          },
+          reactions: message.reactions || {}
+        };
+        return transformedMessage;
+      }).reverse();
+
+      // Update hasMoreMessages based on whether we got a full page
+      setHasMoreMessages(data?.length === PAGE_SIZE);
+
+      return transformedData;
+    } catch (error) {
+      console.error('Error in fetchMessages:', error);
+      toast.error('Failed to load messages');
+      return null;
+    }
+  }, []);
+
+  // Modify useEffect for initial message load
+  useEffect(() => {
+    const loadInitialMessages = async () => {
+      if (!activeChannel) return;
+      
+      setLoading(true);
+      // Add a small delay for better UX
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const messages = await fetchMessages(activeChannel);
+      if (messages) {
+        setMessages(messages);
+      }
+      setLoading(false);
+    };
+
+    loadInitialMessages();
+  }, [activeChannel, fetchMessages]);
+
+  // Combined scroll handler for both loading more messages and checking bottom position
+  const handleScroll = useCallback(async (e: React.UIEvent<HTMLDivElement>) => {
+    const div = e.currentTarget;
+    
+    // Check if user is near bottom
+    const isNearBottom = div.scrollHeight - div.scrollTop - div.clientHeight < 100;
+    setIsNearBottom(isNearBottom);
+    setShouldScrollToBottom(isNearBottom);
+    
+    // Check if we're near the top (within 100px) and not already loading
+    if (div.scrollTop < 100 && !isLoadingMore && hasMoreMessages) {
+      setIsLoadingMore(true);
+      
+      // Get the oldest message's timestamp
+      const oldestMessage = messages[0];
+      if (oldestMessage) {
+        // Add a small delay for better UX
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const olderMessages = await fetchMessages(activeChannel, oldestMessage.created_at);
+        if (olderMessages && olderMessages.length > 0) {
+          setMessages(prev => [...olderMessages, ...prev]);
+        }
+      }
+      
+      setIsLoadingMore(false);
+    }
+  }, [activeChannel, messages, isLoadingMore, hasMoreMessages, fetchMessages]);
+
   // Scroll to bottom when messages change and shouldScrollToBottom is true
   useEffect(() => {
     if (shouldScrollToBottom && messagesEndRef.current) {
@@ -246,14 +374,6 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       threadMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [threadMessages]);
-
-  // Check if user is near bottom when scrolling
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const div = e.currentTarget;
-    const isNearBottom = div.scrollHeight - div.scrollTop - div.clientHeight < 100;
-    setIsNearBottom(isNearBottom);
-    setShouldScrollToBottom(isNearBottom);
-  };
 
   // File upload handler
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isThreadMessage: boolean = false) => {
@@ -333,7 +453,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   useEffect(() => {
     if (activeChannel) {
       console.log('ChatArea: Channel ID changed, setting up...', activeChannel);
-      fetchMessages();
+      // Initial load of messages
+      const loadInitialMessages = async () => {
+        setLoading(true);
+        const messages = await fetchMessages(activeChannel);
+        if (messages) {
+          setMessages(messages);
+        }
+        setLoading(false);
+      };
+      loadInitialMessages();
 
       // Set up realtime subscription
       const channel = supabase
@@ -346,16 +475,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             table: 'messages',
             filter: `channel_id=eq.${activeChannel}`
           },
-          async (payload: {
-            new: {
-              id: string;
-              channel_id: string;
-              content: string;
-              created_at: string;
-              user_id: string;
-              parent_id: string | null;
-            };
-          }) => {
+          async (payload) => {
             console.log('Realtime: New message received:', payload);
             
             // Fetch the complete message with user data
@@ -379,9 +499,9 @@ const ChatArea: React.FC<ChatAreaProps> = ({
 
             if (newMessage) {
               console.log('Realtime: Adding new message to state:', newMessage);
-              // Transform the new message to match the expected format
+              // Transform the new message
               const transformedMessage = {
-                ...(newMessage as MessageWithUserProfile),
+                ...newMessage,
                 user: newMessage.user_profiles
               };
 
@@ -389,67 +509,14 @@ const ChatArea: React.FC<ChatAreaProps> = ({
               if (transformedMessage.parent_id && threadMessage?.id === transformedMessage.parent_id) {
                 setThreadMessages(prev => [...prev, transformedMessage]);
               }
-              // If it's a main message or we're not viewing its thread, add it to main messages
+              // If it's a main message, add it to main messages and remove oldest if needed
               else if (!transformedMessage.parent_id) {
-                setMessages(prev => [...prev, transformedMessage]);
+                setMessages(prev => {
+                  const newMessages = [...prev, transformedMessage];
+                  // Keep only the most recent PAGE_SIZE messages
+                  return newMessages.slice(-PAGE_SIZE);
+                });
               }
-            }
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'messages',
-            filter: `channel_id=eq.${activeChannel}`
-          },
-          async (payload: {
-            new: {
-              id: string;
-              channel_id: string;
-            };
-          }) => {
-            console.log('Realtime: Message updated:', payload);
-            
-            // Fetch the complete updated message
-            const { data: updatedMessage, error } = await supabase
-              .from('messages')
-              .select(`
-                *,
-                user:user_profiles!user_id (
-                  id,
-                  username,
-                  avatar_url
-                )
-              `)
-              .eq('id', payload.new.id)
-              .single();
-
-            if (error) {
-              console.error('Error fetching updated message:', error);
-              return;
-            }
-
-            // Update the message in state
-            setMessages(prev => prev.map(msg => 
-              msg.id === payload.new.id 
-                ? { ...msg, ...updatedMessage }
-                : msg
-            ));
-
-            // Also update thread messages if necessary
-            setThreadMessages(prev => prev.map(msg => 
-              msg.id === payload.new.id 
-                ? { ...msg, ...updatedMessage }
-                : msg
-            ));
-
-            // Update thread message if it's the one being updated
-            if (threadMessage?.id === payload.new.id) {
-              setThreadMessage(prev => 
-                prev ? { ...prev, ...updatedMessage } : null
-              );
             }
           }
         )
@@ -461,53 +528,6 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       };
     }
   }, [activeChannel, threadMessage?.id]);
-
-  const fetchMessages = async () => {
-    if (!activeChannel) {
-      console.log('fetchMessages: No channel ID provided');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      
-      const query = supabase
-        .from('messages')
-        .select(`
-          *,
-          user_profiles!user_id (
-            id,
-            username,
-            avatar_url
-          )
-        `)
-        .eq('channel_id', activeChannel)
-        .is('parent_id', null)  // Only fetch main messages, not replies
-        .order('created_at', { ascending: true });
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('Error fetching messages:', error);
-        toast.error('Failed to load messages');
-        return;
-      }
-
-      // Transform the data to match the expected format
-      const transformedData = (data as MessageWithUserProfile[] || []).map(message => ({
-        ...message,
-        user: message.user_profiles
-      }));
-
-      console.log('Fetched messages:', transformedData);
-      setMessages(transformedData);
-    } catch (error) {
-      console.error('Error in fetchMessages:', error);
-      toast.error('Failed to load messages');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchThreadMessages = async (parentId: string) => {
     try {
@@ -1386,6 +1406,12 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           ) : (
             <div className="space-y-4 min-w-0">
+              {/* Loading indicator for pagination */}
+              {isLoadingMore && (
+                <div className="flex justify-center py-2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-900 dark:border-white"></div>
+                </div>
+              )}
               {messages.map((message) => (
                 <Message
                   key={message.id}

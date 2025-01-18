@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import dynamic from 'next/dynamic'
 import { WebSearchAgentChatModal } from '@/app/agents/web-search-agent/components/WebSearchAgentChatModal'
+import { WebSearchProvider } from '@/app/agents/web-search-agent/hooks'
 
 interface DMUser {
   id: string;
@@ -387,11 +388,13 @@ export default function CollapsibleDMList({
 
       {/* Replace AgentChatModal with WebSearchAgentChatModal */}
       {selectedAgent && (
-        <WebSearchAgentChatModal
-          isOpen={true}
-          agentId={selectedAgent.id}
-          onClose={() => setSelectedAgent(null)}
-        />
+        <WebSearchProvider>
+          <WebSearchAgentChatModal
+            isOpen={true}
+            agentId={selectedAgent.id}
+            onClose={() => setSelectedAgent(null)}
+          />
+        </WebSearchProvider>
       )}
     </>
   )

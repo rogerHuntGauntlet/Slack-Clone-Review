@@ -526,11 +526,17 @@ export const getWorkspaces = async (userId?: string) => {
       const { data: workspaces, error } = await supabase
         .from('workspace_members')
         .select(`
+          role,
           workspace:workspaces (
             id,
             name,
             created_at,
-            created_by
+            created_by,
+            is_public,
+            description,
+            member_count:workspace_members!inner (
+              user_id
+            )
           )
         `)
         .eq('user_id', userId);
@@ -541,12 +547,23 @@ export const getWorkspaces = async (userId?: string) => {
       }
 
       // Transform the data to match the expected format
-      const transformedWorkspaces = (workspaces as WorkspaceMemberData[]).map(w => ({
-        id: w.workspace.id,
-        name: w.workspace.name,
-        role: 'member',
-        member_count: 1 // We'll update this later if needed
-      }));
+      const transformedWorkspaces = (workspaces as any[]).map(w => {
+        // Filter out agent users and count remaining members
+        const memberCount = w.workspace.member_count?.filter((m: any) => 
+          m.user_id !== '00000000-0000-0000-0000-000000000001' && 
+          m.user_id !== '00000000-0000-0000-0000-000000000002'
+        ).length || 0;
+
+        return {
+          id: w.workspace.id,
+          name: w.workspace.name,
+          role: w.role,
+          is_public: w.workspace.is_public,
+          created_by: w.workspace.created_by,
+          description: w.workspace.description,
+          member_count: memberCount
+        };
+      });
 
       logInfo(`✅ [getWorkspaces] Fetched ${workspaces.length} workspaces for user`, createLogContext({ count: workspaces.length }));
       return transformedWorkspaces;
@@ -1531,5 +1548,30 @@ export const addUserToUniversalWorkspace = async (userId: string) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logError('Error adding user to universal workspace:', createLogContext({ error: errorMessage }));
     throw error;
+  }
+}
+
+export const updateWorkspace = async (workspaceId: string, updates: { is_public?: boolean, description?: string }) => {
+  try {
+    logInfo('Updating workspace:', createLogContext({ workspaceId, updates }))
+
+    const { data, error } = await supabase
+      .from('workspaces')
+      .update(updates)
+      .eq('id', workspaceId)
+      .select()
+      .single()
+
+    if (error) {
+      logError('Error updating workspace:', createLogContext({ error }))
+      throw error
+    }
+
+    logInfo('Workspace updated successfully:', createLogContext({ workspaceId }))
+    return data
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    logError('Error in updateWorkspace:', createLogContext({ error: errorMessage }))
+    throw error
   }
 }

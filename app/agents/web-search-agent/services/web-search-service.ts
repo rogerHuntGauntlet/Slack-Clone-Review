@@ -1,4 +1,5 @@
 import { WebSearchResponse, WebSearchSettings } from '../types';
+import { WebSearchCacheService } from './web-search-cache-service';
 
 class WebSearchService {
   private settings: WebSearchSettings = {
@@ -8,11 +9,14 @@ class WebSearchService {
     safeModeEnabled: true,
   };
 
+  private cache: WebSearchCacheService;
+
   constructor() {
     // Initialize with environment variables if available
     if (process.env.NEXT_PUBLIC_SEARCH_ENGINE) {
       this.settings.searchEngine = process.env.NEXT_PUBLIC_SEARCH_ENGINE as 'google' | 'bing';
     }
+    this.cache = new WebSearchCacheService();
   }
 
   public updateSettings(newSettings: Partial<WebSearchSettings>): void {
@@ -21,7 +25,13 @@ class WebSearchService {
 
   public async search(query: string): Promise<WebSearchResponse> {
     try {
-      // TODO: Implement actual search API integration
+      // Check cache first
+      const cachedResult = this.cache.get(query, this.settings);
+      if (cachedResult) {
+        return cachedResult;
+      }
+
+      // If not in cache, perform search
       const response = await fetch('/api/agents/web-search-agent/search', {
         method: 'POST',
         headers: {
@@ -37,7 +47,12 @@ class WebSearchService {
         throw new Error('Search request failed');
       }
 
-      return await response.json();
+      const searchResponse = await response.json();
+      
+      // Cache the result
+      this.cache.set(query, searchResponse, this.settings);
+
+      return searchResponse;
     } catch (error) {
       console.error('Search error:', error);
       throw error;
@@ -65,7 +80,14 @@ class WebSearchService {
       throw error;
     }
   }
+
+  public getCacheStats() {
+    return this.cache.getCacheStats();
+  }
+
+  public clearCache() {
+    this.cache.clear();
+  }
 }
 
-// Export as singleton
-export const webSearchService = new WebSearchService(); 
+export default WebSearchService; 

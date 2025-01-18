@@ -312,6 +312,31 @@ function AuthContent({ workspaceId }: AuthContentProps) {
     }
   }
 
+  const handlePasswordReset = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    if (!email) {
+      setError('Please enter your email address to reset your password')
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    setMessage(null)
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/callback?type=recovery`
+      })
+
+      if (error) throw error
+      setMessage('Password reset instructions have been sent to your email')
+    } catch (error: any) {
+      setError(error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const toggleMode = (e: React.MouseEvent) => {
     e.preventDefault()
     setIsSignUp(!isSignUp)
@@ -457,6 +482,15 @@ function AuthContent({ workspaceId }: AuthContentProps) {
               </div>
               {validationErrors.password && (
                 <p className="mt-1 text-sm text-red-400">{validationErrors.password}</p>
+              )}
+              {!isSignUp && (
+                <button
+                  onClick={handlePasswordReset}
+                  type="button"
+                  className="mt-1 text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+                >
+                  Forgot your password?
+                </button>
               )}
             </div>
 

@@ -1,8 +1,13 @@
 export interface Workspace {
   id: string;
   name: string;
-  role: string;
+  created_at: string;
+  created_by: string;
+  is_public?: boolean;
+  description?: string;
+  member_count?: number;
   isFavorite?: boolean;
+  role?: string;
 }
 
 export type Database = {
