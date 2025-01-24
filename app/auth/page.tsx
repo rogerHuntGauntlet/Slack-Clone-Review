@@ -601,6 +601,13 @@ function AuthContent({ workspaceId }: AuthContentProps) {
           </div>
         </motion.div>
       </div>
+
+      <div className="mt-6 p-4 bg-gray-800 text-white rounded-lg shadow-lg">
+        <h2 className="text-lg font-semibold">Engage Our Suite of Products!</h2>
+        <p className="mt-2 text-sm">
+          Starting with <strong>OHFdesk</strong> to manage teams, projects, and sales using the most advanced AI tools. Build an entire team of AI agents to generate business for you and handle your daily grind.
+        </p>
+      </div>
     </div>
   )
 }
