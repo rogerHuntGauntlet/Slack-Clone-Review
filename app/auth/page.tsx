@@ -391,6 +391,19 @@ function AuthContent({ workspaceId }: AuthContentProps) {
             </div>
           </div>
 
+          {/* New Container for Suite of Products */}
+          <div className="mt-8 p-6 bg-white/5 rounded-xl border border-white/10 shadow-lg text-center">
+            <h3 className="text-xl font-semibold text-white mb-4">Visit our Suite of Products:</h3>
+            <a
+              href="https://projects.ohfpartners.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block py-3 px-6 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300"
+            >
+              Explore Projects
+            </a>
+          </div>
+
           {workspaceName && (
             <motion.div
               className="p-6 bg-white/5 rounded-xl border border-white/10 max-w-md backdrop-blur-lg"
@@ -447,7 +460,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className={`mt-1 block w-full rounded-xl bg-white/5 border ${validationErrors.email ? 'border-red-500' : 'border-white/10'
-                  } text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-all duration-300 h-12 px-4`}
+                  } text-white shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 h-12 px-4`}
                 placeholder="you@example.com"
                 autoComplete="username"
               />
@@ -468,7 +481,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   className={`mt-1 block w-full rounded-xl bg-white/5 border ${validationErrors.password ? 'border-red-500' : 'border-white/10'
-                    } text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-all duration-300 h-12 px-4 pr-10`}
+                    } text-white shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:text-sm transition-all duration-300 h-12 px-4 pr-10`}
                   placeholder="••••••••"
                   autoComplete={isSignUp ? 'new-password' : 'current-password'}
                 />
@@ -507,7 +520,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
                     className={`mt-1 block w-full rounded-xl bg-white/5 border ${validationErrors.confirmPassword ? 'border-red-500' : 'border-white/10'
-                      } text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-all duration-300 h-12 px-4 pr-10`}
+                      } text-white shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:text-sm transition-all duration-300 h-12 px-4 pr-10`}
                     placeholder="••••••••"
                     autoComplete="new-password"
                   />
@@ -600,13 +613,6 @@ function AuthContent({ workspaceId }: AuthContentProps) {
             </button>
           </div>
         </motion.div>
-      </div>
-
-      <div className="mt-6 p-4 bg-gray-800 text-white rounded-lg shadow-lg">
-        <h2 className="text-lg font-semibold">Engage Our Suite of Products!</h2>
-        <p className="mt-2 text-sm">
-          Starting with <strong>OHFdesk</strong> to manage teams, projects, and sales using the most advanced AI tools. Build an entire team of AI agents to generate business for you and handle your daily grind.
-        </p>
       </div>
     </div>
   )
