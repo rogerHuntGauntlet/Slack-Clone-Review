@@ -97,7 +97,11 @@ export default function WalletModal({ isOpen, onClose, onSuccess }: WalletModalP
       const publicKey = new PublicKey(response.publicKey.toString())
 
       // Get SOL balance
-      const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com');
+      const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
+      if (!rpcUrl) {
+        throw new Error('NEXT_PUBLIC_SOLANA_RPC_URL is not configured');
+      }
+      const connection = new Connection(rpcUrl);
       const solBalance = await connection.getBalance(publicKey);
       const solBalanceDisplay = (solBalance / LAMPORTS_PER_SOL).toFixed(4);
       
