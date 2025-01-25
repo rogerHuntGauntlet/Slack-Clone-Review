@@ -101,7 +101,15 @@ export default function WalletModal({ isOpen, onClose, onSuccess }: WalletModalP
       if (!rpcUrl) {
         throw new Error('NEXT_PUBLIC_SOLANA_RPC_URL is not configured');
       }
-      const connection = new Connection(rpcUrl);
+      const connection = new Connection(
+        'https://solana-mainnet.core.chainstack.com/f54f73a5744e86405ae7fc4655cdaed4',
+        {
+          httpHeaders: {
+            'Authorization': 'Bearer f54f73a5744e86405ae7fc4655cdaed4'
+          },
+          commitment: 'confirmed'
+        }
+      );
       const solBalance = await connection.getBalance(publicKey);
       const solBalanceDisplay = (solBalance / LAMPORTS_PER_SOL).toFixed(4);
 
