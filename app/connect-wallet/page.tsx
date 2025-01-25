@@ -16,6 +16,8 @@ const getProvider = () => {
         return provider;
       }
     }
+    // If Phantom is not found, return a specific error
+    throw new Error('phantom-not-installed');
   }
   return null;
 }
@@ -40,6 +42,7 @@ export default function ConnectWallet() {
   const [error, setError] = useState<string | null>(null)
   const [balance, setBalance] = useState<string | null>(null)
   const [hasPhantom, setHasPhantom] = useState(false)
+  const [showPhantomLink, setShowPhantomLink] = useState(false)
 
   const requiredBalance = Number(process.env.NEXT_PUBLIC_TOKEN_REQUIRED_BALANCE) || 0
   const tokenDecimals = Number(process.env.NEXT_PUBLIC_TOKEN_DECIMALS) || 9
@@ -144,10 +147,19 @@ export default function ConnectWallet() {
 
       // Get provider with delay to ensure proper initialization
       await new Promise(resolve => setTimeout(resolve, 500));
-      const provider = getProvider();
-
-      if (!provider) {
-        throw new Error('Please install Phantom wallet')
+      
+      try {
+        const provider = getProvider();
+        if (!provider) {
+          throw new Error('phantom-not-installed');
+        }
+      } catch (e: any) {
+        if (e.message === 'phantom-not-installed') {
+          setError('Phantom wallet is not installed. Click here to install: ');
+          setShowPhantomLink(true);
+          return;
+        }
+        throw e;
       }
 
       // Try to connect to wallet
@@ -271,19 +283,17 @@ export default function ConnectWallet() {
         </div>
 
         {error && (
-          <div className="rounded-md bg-red-500/10 p-4 text-sm text-red-500">
+          <div className="text-red-500 mb-4">
             {error}
-            {error.includes(tokenSymbol) && (
-              <div className="mt-2">
-                <a
-                  href="https://pump.fun/coin/4KDMEPoyuQVcLs6n6GUpAPM7dhrmsQxYHmJ7uckwpump"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-purple-400 hover:text-purple-300 underline"
-                >
-                  Click here to buy {tokenSymbol}
-                </a>
-              </div>
+            {showPhantomLink && (
+              <a 
+                href="https://phantom.app/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:text-blue-600 ml-1 underline"
+              >
+                Install Phantom Wallet
+              </a>
             )}
           </div>
         )}
