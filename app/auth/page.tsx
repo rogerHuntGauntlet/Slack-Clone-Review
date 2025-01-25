@@ -9,7 +9,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { FaWallet } from 'react-icons/fa'
 import { motion } from 'framer-motion'
 import { DotLottieReact } from '@lottiefiles/dotlottie-react'
-
+import WalletModal from '@/components/WalletModal'
 
 const DEBUG_EMAIL = 'regorhunt02052@gmail.com'
 
@@ -81,6 +81,7 @@ function AuthContent({ workspaceId }: AuthContentProps) {
     password?: string;
     confirmPassword?: string;
   }>({})
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false)
 
   useEffect(() => {
     const styleEl = document.createElement('style');
@@ -605,15 +606,24 @@ function AuthContent({ workspaceId }: AuthContentProps) {
 
             <button
               type="button"
-              onClick={() => router.push('/connect-wallet')}
-              className="col-span-2 flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4285f4]"
+              onClick={() => setIsWalletModalOpen(true)}
+              disabled={loading}
+              className="col-span-2 flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4285f4] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FaWallet className="h-5 w-5 text-[#E6007A]" />
-              Connect Wallet
+              {loading ? 'Please wait...' : 'Connect Wallet'}
             </button>
           </div>
         </motion.div>
       </div>
+      <WalletModal 
+        isOpen={isWalletModalOpen} 
+        onClose={() => setIsWalletModalOpen(false)}
+        onSuccess={() => {
+          setMessage('Wallet connected successfully!')
+          setTimeout(() => setMessage(null), 3000)
+        }}
+      />
     </div>
   )
 }

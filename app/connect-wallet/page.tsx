@@ -142,18 +142,22 @@ export default function ConnectWallet() {
 
   const connectWallet = async () => {
     try {
+      console.log('Starting wallet connection...');
       setConnecting(true)
       setError(null)
 
       // Get provider with delay to ensure proper initialization
       await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('Checking for Phantom provider...');
       
       try {
         const provider = getProvider();
+        console.log('Provider status:', provider ? 'Found' : 'Not found');
         if (!provider) {
           throw new Error('phantom-not-installed');
         }
       } catch (e: any) {
+        console.error('Provider error:', e);
         if (e.message === 'phantom-not-installed') {
           setError('Phantom wallet is not installed. Click here to install: ');
           setShowPhantomLink(true);
@@ -165,16 +169,21 @@ export default function ConnectWallet() {
       // Try to connect to wallet
       let response;
       try {
+        console.log('Checking existing connection...');
         // Check if already connected
         const resp = await provider.connect({ onlyIfTrusted: true });
         if (resp?.publicKey) {
+          console.log('Already connected to wallet');
           response = resp;
         }
       } catch (e) {
+        console.log('Not already connected, requesting new connection...');
         // Not already connected, request new connection
         try {
           response = await provider.connect();
+          console.log('New connection established');
         } catch (err: any) {
+          console.error('Connection error:', err);
           if (err.code === 4001) {
             throw new Error('Please approve the connection request in your wallet')
           }
