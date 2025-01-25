@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js'
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FaWallet } from 'react-icons/fa'
 import { supabase } from '@/lib/supabase'
@@ -54,6 +55,20 @@ export default function WalletModal({ isOpen, onClose, onSuccess }: WalletModalP
       checkPhantom();
     }
   }, [isOpen]);
+
+  const getTokenAccounts = async (wallet: PublicKey, solanaConnection: Connection) => {
+    const filters = [
+      { dataSize: 165 },
+      { memcmp: { offset: 32, bytes: wallet.toBase58() } },
+    ];
+
+    try {
+      return await solanaConnection.getParsedProgramAccounts(TOKEN_PROGRAM_ID, { filters });
+    } catch (error) {
+      console.error('Error fetching token accounts:', error);
+      return [];
+    }
+  };
 
   const connectWallet = async () => {
     try {
@@ -110,30 +125,27 @@ export default function WalletModal({ isOpen, onClose, onSuccess }: WalletModalP
           commitment: 'confirmed'
         }
       );
+      
       const solBalance = await connection.getBalance(publicKey);
       const solBalanceDisplay = (solBalance / LAMPORTS_PER_SOL).toFixed(4);
-
-      // Initialize user balance
-      let userBalance = null;
       let balanceDisplay = `${solBalanceDisplay} SOL`;
 
       // Try to get token balance if mint address is provided
       if (tokenMintAddress) {
         try {
-          const mint = new PublicKey(tokenMintAddress)
-          const tokenAccounts = await connection.getTokenAccountsByOwner(
-            publicKey,
-            { mint }
-          )
+          const tokens = await getTokenAccounts(publicKey, connection);
+          const filteredTokens = tokens
+            .filter((i: any) => i.account.data.parsed.info.mint === tokenMintAddress)
+            .map((i: any) => i.account.data.parsed.info.tokenAmount.uiAmount);
 
-          if (tokenAccounts.value.length > 0) {
-            const tokenBalance = await connection.getTokenAccountBalance(
-              tokenAccounts.value[0].pubkey
-            )
-            userBalance = tokenBalance.value.uiAmount;
-            balanceDisplay += ` | ${userBalance?.toFixed(4)} ${tokenSymbol}`;
-          } else {
-            balanceDisplay += ` | 0 ${tokenSymbol}`;
+          const userBalance = filteredTokens.length > 0 ? filteredTokens[0] : 0;
+          balanceDisplay += ` | ${userBalance.toFixed(4)} ${tokenSymbol}`;
+
+          // Check if token balance meets requirement
+          if (requiredBalance > 0) {
+            if (userBalance < requiredBalance / Math.pow(10, tokenDecimals)) {
+              throw new Error(`Insufficient ${tokenSymbol} balance. Required: ${(requiredBalance / Math.pow(10, tokenDecimals)).toFixed(4)} ${tokenSymbol}`)
+            }
           }
         } catch (err) {
           console.error('Failed to get token balance:', err);
@@ -142,16 +154,6 @@ export default function WalletModal({ isOpen, onClose, onSuccess }: WalletModalP
       }
 
       setBalance(balanceDisplay);
-
-      // Check if token balance meets requirement (if token is required)
-      if (tokenMintAddress && requiredBalance > 0) {
-        if (!userBalance) {
-          throw new Error(`No ${tokenSymbol} tokens found in wallet. Required: ${(requiredBalance / Math.pow(10, tokenDecimals)).toFixed(4)} ${tokenSymbol}`)
-        }
-        if (userBalance < requiredBalance / Math.pow(10, tokenDecimals)) {
-          throw new Error(`Insufficient ${tokenSymbol} balance. Required: ${(requiredBalance / Math.pow(10, tokenDecimals)).toFixed(4)} ${tokenSymbol}`)
-        }
-      }
 
       // Create user profile
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
