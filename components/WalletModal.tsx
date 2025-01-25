@@ -97,14 +97,14 @@ export default function WalletModal({ isOpen, onClose, onSuccess }: WalletModalP
       const publicKey = new PublicKey(response.publicKey.toString())
 
       // Get SOL balance
-      const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
+      const rpcUrl = "https://solana-mainnet.core.chainstack.com/f54f73a5744e86405ae7fc4655cdaed4";
       if (!rpcUrl) {
         throw new Error('NEXT_PUBLIC_SOLANA_RPC_URL is not configured');
       }
       const connection = new Connection(rpcUrl);
       const solBalance = await connection.getBalance(publicKey);
       const solBalanceDisplay = (solBalance / LAMPORTS_PER_SOL).toFixed(4);
-      
+
       // Initialize user balance
       let userBalance = null;
       let balanceDisplay = `${solBalanceDisplay} SOL`;
@@ -117,7 +117,7 @@ export default function WalletModal({ isOpen, onClose, onSuccess }: WalletModalP
             publicKey,
             { mint }
           )
-          
+
           if (tokenAccounts.value.length > 0) {
             const tokenBalance = await connection.getTokenAccountBalance(
               tokenAccounts.value[0].pubkey
@@ -207,9 +207,9 @@ export default function WalletModal({ isOpen, onClose, onSuccess }: WalletModalP
                 <p className="text-red-400 text-sm">
                   {error}
                   {showPhantomLink && (
-                    <a 
-                      href="https://phantom.app/" 
-                      target="_blank" 
+                    <a
+                      href="https://phantom.app/"
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-500 hover:text-blue-600 ml-1 underline"
                     >
