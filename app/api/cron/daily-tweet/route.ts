@@ -5,7 +5,7 @@ import { TwitterApi } from 'twitter-api-v2';
 import OpenAI from 'openai';
 import { Tavily } from 'tavily';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
