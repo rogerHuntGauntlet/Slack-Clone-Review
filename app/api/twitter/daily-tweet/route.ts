@@ -3,13 +3,15 @@ import fs from 'fs';
 import path from 'path';
 import { TwitterApi } from 'twitter-api-v2';
 import OpenAI from 'openai';
-import { Tavily } from 'tavily';
+import { createClient } from 'tavily';
 
 const ACCOUNTS_FILE = path.join(process.cwd(), 'data', 'twitter-accounts.json');
 
+export const maxDuration = 60; // Maximum allowed duration for hobby plan
+
 async function generateTweetContent() {
   // Initialize Tavily client
-  const tavily = new Tavily(process.env.NEXT_PUBLIC_TAVILY_API_KEY!);
+  const tavily = createClient(process.env.NEXT_PUBLIC_TAVILY_API_KEY!);
   
   // Search for information about GauntletAI.com
   const searchResponse = await tavily.search({

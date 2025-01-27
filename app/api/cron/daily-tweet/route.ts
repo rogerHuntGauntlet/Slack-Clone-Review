@@ -3,20 +3,20 @@ import fs from 'fs';
 import path from 'path';
 import { TwitterApi } from 'twitter-api-v2';
 import OpenAI from 'openai';
-import { Tavily } from 'tavily';
+import { createClient } from 'tavily';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // Vercel cron syntax: runs at 10 AM UTC daily (6 AM EST)
-export const maxDuration = 300; // 5 minutes maximum execution time
+export const maxDuration = 60; // Maximum allowed duration for hobby plan
 export const schedule = '0 10 * * *';
 
 const ACCOUNTS_FILE = path.join(process.cwd(), 'data', 'twitter-accounts.json');
 
 async function generateTweetContent() {
-  const tavily = new Tavily(process.env.NEXT_PUBLIC_TAVILY_API_KEY!);
+  const tavily = createClient(process.env.NEXT_PUBLIC_TAVILY_API_KEY!);
   
   const searchResponse = await tavily.search({
     query: 'GauntletAI.com company information products features',
