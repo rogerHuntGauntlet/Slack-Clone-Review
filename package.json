@@ -21,7 +21,8 @@
     "init-phd": "ts-node scripts/init-phd-index.ts",
     "vectorize-chunks": "ts-node scripts/vectorize-chunks.ts",
     "setup-rag": "npm run init-vectors && npm run vectorize",
-    "setup-phd": "npm run init-phd && npm run vectorize-chunks"
+    "setup-phd": "npm run init-phd && npm run vectorize-chunks",
+    "db:migrate": "ts-node scripts/run-migrations.ts"
   },
   "dependencies": {
     "@auth/core": "^0.34.2",
@@ -58,6 +59,7 @@
     "ai": "^4.0.39",
     "autoprefixer": "^10.4.20",
     "cheerio": "^1.0.0",
+    "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
     "emoji-picker-react": "^4.12.0",
@@ -72,7 +74,7 @@
     "next-themes": "^0.4.4",
     "node-cron": "^3.0.3",
     "node-fetch": "^3.3.2",
-    "openai": "^4.78.1",
+    "openai": "^4.80.1",
     "p-limit": "^6.2.0",
     "pdf-parse": "^1.1.1",
     "pg": "^8.13.1",
@@ -92,8 +94,11 @@
     "rehype-highlight": "^7.0.1",
     "remark-gfm": "^4.0.0",
     "stripe": "^17.5.0",
+    "tailwind-merge": "^2.6.0",
     "tailwindcss": "^3.4.17",
+    "tavily": "^1.0.2",
     "three": "^0.172.0",
+    "twitter-api-v2": "^1.19.0",
     "winston": "^3.17.0",
     "zod": "^3.24.1"
   },

@@ -40,7 +40,7 @@ export default function Header({
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [showResults, setShowResults] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
-  
+
   const debouncedSearch = useCallback(async (query: string) => {
     if (query.trim()) {
       setIsSearching(true)
@@ -74,6 +74,10 @@ export default function Header({
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  const handleHordeClick = () => {
+    router.push('/horde');
+  };
 
   return (
     <header className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-4 flex items-center justify-between">
@@ -207,11 +211,11 @@ export default function Header({
           </button>
         )}
         
-        <button
-          onClick={onLogout}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-        >
-          <LogOut className="w-5 h-5" />
+        <button onClick={onLogout} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
+          <LogOut className="w-4 h-4" /> Logout
+        </button>
+        <button onClick={handleHordeClick} className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-md ml-2">
+          Join X Horde
         </button>
       </div>
     </header>

@@ -31,6 +31,11 @@ function isRateLimited(ip: string): boolean {
 }
 
 export async function middleware(req: NextRequest) {
+  // Skip middleware for /horde route
+  if (req.nextUrl.pathname.startsWith('/horde')) {
+    return NextResponse.next();
+  }
+
   // Get client IP
   const ip = req.ip || req.headers.get('x-forwarded-for') || 'unknown'
 
@@ -90,7 +95,8 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public folder
+     * - /horde (twitter horde page)
      */
-    '/((?!_next/static|_next/image|favicon.ico|public).*)',
+    '/((?!_next/static|_next/image|favicon.ico|public|horde).*)',
   ],
 } 
