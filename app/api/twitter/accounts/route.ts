@@ -17,29 +17,26 @@ const supabase = createClient(
 
 export async function GET() {
   try {
+    // Get all Twitter accounts
     const { data: accounts, error } = await supabase
       .from('twitter_accounts')
-      .select('user_id, username, created_at')
+      .select('user_id, username')
       .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching Twitter accounts:', error);
       return NextResponse.json({ 
-        error: 'Failed to fetch Twitter accounts',
-        details: error.message,
-        accounts: [] // Always include accounts array even on error
+        error: 'Failed to fetch accounts',
+        details: error.message
       }, { status: 500 });
     }
 
-    return NextResponse.json({ 
-      accounts: accounts || [] // Ensure we always return an array
-    });
+    return NextResponse.json({ accounts: accounts || [] });
   } catch (error: any) {
-    console.error('Error:', error);
+    console.error('Error in accounts route:', error);
     return NextResponse.json({ 
-      error: 'Failed to fetch Twitter accounts',
-      details: error.message || 'An unexpected error occurred',
-      accounts: [] // Always include accounts array even on error
+      error: 'Internal server error',
+      details: error.message
     }, { status: 500 });
   }
 }
@@ -82,11 +79,12 @@ export async function DELETE(request: Request) {
 
     if (!userId) {
       return NextResponse.json({ 
-        error: 'Missing userId parameter',
-        accounts: [] // Always include accounts array even on error
+        error: 'Missing user ID',
+        details: 'User ID is required'
       }, { status: 400 });
     }
 
+    // Delete the account
     const { error } = await supabase
       .from('twitter_accounts')
       .delete()
@@ -95,28 +93,17 @@ export async function DELETE(request: Request) {
     if (error) {
       console.error('Error deleting Twitter account:', error);
       return NextResponse.json({ 
-        error: 'Failed to delete Twitter account',
-        details: error.message,
-        accounts: [] // Always include accounts array even on error
+        error: 'Failed to delete account',
+        details: error.message
       }, { status: 500 });
     }
 
-    // After successful deletion, fetch and return updated accounts list
-    const { data: accounts } = await supabase
-      .from('twitter_accounts')
-      .select('user_id, username, created_at')
-      .order('created_at', { ascending: false });
-
-    return NextResponse.json({ 
-      success: true,
-      accounts: accounts || [] // Return updated accounts list
-    });
+    return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Error:', error);
+    console.error('Error in delete account route:', error);
     return NextResponse.json({ 
-      error: 'Failed to delete Twitter account',
-      details: error.message || 'An unexpected error occurred',
-      accounts: [] // Always include accounts array even on error
+      error: 'Internal server error',
+      details: error.message
     }, { status: 500 });
   }
 }

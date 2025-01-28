@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // Initialize Supabase client with service role key for admin access
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!, // Use service role key to bypass RLS
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
   {
     auth: {
       persistSession: false,
@@ -44,18 +44,18 @@ export async function POST(request: Request) {
     // Initialize the Twitter client
     const client = new TwitterApi({
       clientId: process.env.NEXT_PUBLIC_TWITTER_CLIENT_ID!,
-      clientSecret: process.env.NEXT_PUBLIC_TWITTER_CLIENT_SECRET!,
+      clientSecret: process.env.TWITTER_CLIENT_SECRET!,
     });
 
     try {
       // Exchange the code for access token
-      const { accessToken } = await client.loginWithOAuth2({
+      const { accessToken, refreshToken } = await client.loginWithOAuth2({
         code,
         codeVerifier: storedData.codeVerifier,
-        redirectUri: `http://localhost:3001/horde`,
+        redirectUri: 'https://www.ohfpartners.com/horde',
       });
 
-      // Get user info
+      // Get user info using the access token
       const twitterClient = new TwitterApi(accessToken);
       const me = await twitterClient.v2.me();
 
@@ -64,6 +64,17 @@ export async function POST(request: Request) {
       }
 
       // Save or update the account in Supabase
+      const { data: existingAccount, error: checkError } = await supabase
+        .from('twitter_accounts')
+        .select('id')
+        .eq('user_id', me.data.id)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "not found" error
+        console.error('Error checking existing account:', checkError);
+        throw new Error('Failed to check existing account');
+      }
+
       const { error: upsertError } = await supabase
         .from('twitter_accounts')
         .upsert({

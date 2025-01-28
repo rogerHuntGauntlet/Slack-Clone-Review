@@ -21,11 +21,10 @@ export async function POST(request: Request) {
     // Initialize Twitter client with required credentials
     const client = new TwitterApi({
       clientId: process.env.NEXT_PUBLIC_TWITTER_CLIENT_ID!,
-      clientSecret: process.env.TWITTER_CLIENT_SECRET!,
     });
 
     // Use the exact callback URL configured in Twitter Developer Portal
-    const redirectUri = process.env.NEXT_PUBLIC_TWITTER_CALLBACK_URL || 'https://www.ohfpartners.com/horde';
+    const redirectUri = 'https://www.ohfpartners.com/horde';
 
     // Generate OAuth2 auth link with PKCE
     const { url, codeVerifier, state } = client.generateOAuth2AuthLink(
@@ -47,7 +46,7 @@ export async function POST(request: Request) {
     // Use a more secure storage method in production
     global.twitterStates = global.twitterStates || new Map<string, TwitterState>();
     global.twitterStates.set(stateHash, { 
-      codeVerifier, 
+      codeVerifier,
       state,
       redirectUri,
       timestamp: Date.now()
@@ -61,10 +60,23 @@ export async function POST(request: Request) {
       }
     });
 
-    console.log('Generated OAuth URL:', url);
-    console.log('Using redirect URI:', redirectUri); // Debug log
+    // Debug logging
+    console.log('OAuth Configuration:', {
+      clientId: process.env.NEXT_PUBLIC_TWITTER_CLIENT_ID,
+      redirectUri,
+      state,
+      codeVerifier
+    });
     
-    return NextResponse.json({ url });
+    console.log('Generated OAuth URL:', url);
+    
+    return NextResponse.json({ 
+      url,
+      debug: {
+        state,
+        redirectUri
+      }
+    });
   } catch (error) {
     console.error('Error initializing Twitter connection:', error);
     
