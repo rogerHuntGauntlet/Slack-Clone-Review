@@ -24,11 +24,8 @@ export async function POST(request: Request) {
       clientSecret: process.env.TWITTER_CLIENT_SECRET!,
     });
 
-    // Get the origin from the request headers
-    const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_BASE_URL;
-    
-    // Construct redirect URI based on the origin
-    const redirectUri = `${origin}/horde`;
+    // Use the exact callback URL configured in Twitter Developer Portal
+    const redirectUri = process.env.NEXT_PUBLIC_TWITTER_CALLBACK_URL || 'https://www.ohfpartners.com/horde';
 
     // Generate OAuth2 auth link with PKCE
     const { url, codeVerifier, state } = client.generateOAuth2AuthLink(
@@ -52,8 +49,8 @@ export async function POST(request: Request) {
     global.twitterStates.set(stateHash, { 
       codeVerifier, 
       state,
-      redirectUri, // Store the redirect URI to verify it later
-      timestamp: Date.now() // Add timestamp for cleanup
+      redirectUri,
+      timestamp: Date.now()
     });
 
     // Clean up old states (older than 10 minutes)
@@ -65,6 +62,8 @@ export async function POST(request: Request) {
     });
 
     console.log('Generated OAuth URL:', url);
+    console.log('Using redirect URI:', redirectUri); // Debug log
+    
     return NextResponse.json({ url });
   } catch (error) {
     console.error('Error initializing Twitter connection:', error);
