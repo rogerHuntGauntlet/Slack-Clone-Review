@@ -1,19 +1,36 @@
 import { NextResponse } from 'next/server';
 import { TwitterApi } from 'twitter-api-v2';
+import crypto from 'crypto';
+
+// Define types for Twitter state storage
+interface TwitterState {
+  codeVerifier: string;
+  state: string;
+  redirectUri: string;
+  timestamp: number;
+}
+
+declare global {
+  var twitterStates: Map<string, TwitterState>;
+}
 
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    // Initialize Twitter client with required credentials
     const client = new TwitterApi({
       clientId: process.env.NEXT_PUBLIC_TWITTER_CLIENT_ID!,
+      clientSecret: process.env.TWITTER_CLIENT_SECRET!,
     });
 
-    // Use localhost during development
-    const redirectUri = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:3001/horde'
-      : `${process.env.NEXT_PUBLIC_BASE_URL}/horde`;
+    // Get the origin from the request headers
+    const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_BASE_URL;
+    
+    // Construct redirect URI based on the origin
+    const redirectUri = `${origin}/horde`;
 
+    // Generate OAuth2 auth link with PKCE
     const { url, codeVerifier, state } = client.generateOAuth2AuthLink(
       redirectUri,
       { 
@@ -27,20 +44,43 @@ export async function POST() {
       }
     );
 
-    // Store the state and code verifier in a secure way
-    const crypto = require('crypto');
+    // Store PKCE data securely
     const stateHash = crypto.createHash('sha256').update(state).digest('hex');
     
-    global.twitterStates = global.twitterStates || new Map();
-    global.twitterStates.set(stateHash, { codeVerifier, state });
+    // Use a more secure storage method in production
+    global.twitterStates = global.twitterStates || new Map<string, TwitterState>();
+    global.twitterStates.set(stateHash, { 
+      codeVerifier, 
+      state,
+      redirectUri, // Store the redirect URI to verify it later
+      timestamp: Date.now() // Add timestamp for cleanup
+    });
 
-    console.log('Generated OAuth URL:', url); // For debugging
+    // Clean up old states (older than 10 minutes)
+    const TEN_MINUTES = 10 * 60 * 1000;
+    Array.from(global.twitterStates.entries()).forEach(([key, value]) => {
+      if (Date.now() - value.timestamp > TEN_MINUTES) {
+        global.twitterStates.delete(key);
+      }
+    });
+
+    console.log('Generated OAuth URL:', url);
     return NextResponse.json({ url });
   } catch (error) {
     console.error('Error initializing Twitter connection:', error);
+    
+    // Return appropriate error response
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ 
       error: 'Failed to initialize Twitter connection',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+      details: errorMessage,
+      // Don't expose internal errors in production
+      ...(process.env.NODE_ENV === 'development' && { stack: error instanceof Error ? error.stack : undefined })
+    }, { 
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
   }
 }
