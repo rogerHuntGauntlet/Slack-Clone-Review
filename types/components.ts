@@ -23,35 +23,18 @@ export interface HeaderProps extends BaseProps {
   currentUser: { id: string; email: string; username?: string }
   isDarkMode: boolean
   toggleDarkMode: () => void
-  onCreateWorkspace: () => void
+  onCreateWorkspace?: () => void
   onOpenProfile: () => void
   onLogout: () => Promise<void>
-  onReturnToWorkspaceSelection: () => void
-  activeWorkspaceId: string
+  onReturnToWorkspaceSelection?: () => void
+  activeWorkspaceId?: string
   workspaceName?: string
-  onSearch: (query: string) => Promise<Array<{
-    id: string;
-    content: string;
-    channel_id: string;
-    user_id: string;
-    channels: {
-      id: string;
-      name: string;
-    };
-    user_profiles: {
-      username: string;
-      email: string;
-    };
-    created_at: string;
-  }>>
-  onSearchResultClick: (result: {
-    id: string;
-    channel_id: string;
-    channels: { name: string };
-  }) => Promise<void>
-  searchQuery: string
-  setSearchQuery: (query: string) => void
+  onSearch?: (query: string) => Promise<SearchResult[]>
+  searchQuery?: string
+  setSearchQuery?: (query: string) => void
   onMenuToggle?: () => void
+  onOpenRoadmap?: () => void
+  onSearchResultClick?: (result: SearchResult) => void
 }
 
 export interface DMListProps extends BaseProps {
@@ -128,4 +111,20 @@ export interface MediaUploadButtonProps {
   config: MediaUploadConfig;
   disabled?: boolean;
   children?: React.ReactNode;
+}
+
+export interface SearchResult {
+  id: string;
+  content: string;
+  channel_id: string;
+  user_id: string;
+  channels: {
+    id: string;
+    name: string;
+  };
+  user_profiles: {
+    username: string;
+    email: string;
+  };
+  created_at: string;
 } 
