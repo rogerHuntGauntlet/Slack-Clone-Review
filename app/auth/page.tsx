@@ -106,7 +106,14 @@ function AuthContent({ workspaceId }: AuthContentProps) {
     debugLog('🔐 [Auth] AuthContent rendered with workspaceId:', workspaceId);
     
     const handleOAuthCallback = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession()
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError) {
+        debugLog('Session error:', sessionError)
+        setError('Failed to get session: ' + sessionError.message)
+        setLoading(false)
+        return
+      }
       
       if (session?.user) {
         debugLog('OAuth callback detected with session:', session.user.id)
@@ -127,8 +134,10 @@ function AuthContent({ workspaceId }: AuthContentProps) {
           // If no access record, redirect to access page
           if (!accessRecord || accessError) {
             debugLog('No access record found - redirecting to access')
-            setMessage('Redirecting to access page...')
-            await router.push('/access?redirectedfromauth=supabase')
+            setMessage('Setting up your account...')
+            setTimeout(() => {
+              router.push('/access?redirectedfromauth=supabase')
+            }, 1500) // Give time for message to be seen
             return
           }
 
@@ -144,17 +153,22 @@ function AuthContent({ workspaceId }: AuthContentProps) {
           // If no profile exists or there's an error, redirect to onboarding
           if (!profile || profileError) {
             debugLog('No profile found - redirecting to onboarding')
-            setMessage('Redirecting to onboarding...')
-            await router.push('/onboarding')
+            setMessage('Preparing your profile...')
+            setTimeout(() => {
+              router.push('/onboarding')
+            }, 1500) // Give time for message to be seen
             return
           }
 
           // If we get here, user has both access and profile, proceed to platform
           debugLog('Existing profile found - redirecting to platform')
-          await router.push('/platform')
+          setMessage('Login successful! Redirecting...')
+          setTimeout(() => {
+            router.push('/platform')
+          }, 1500) // Give time for message to be seen
         } catch (error: any) {
           debugLog('Error in OAuth callback:', error)
-          setError(error.message)
+          setError('Login error: ' + error.message)
           setLoading(false)
         }
       }
