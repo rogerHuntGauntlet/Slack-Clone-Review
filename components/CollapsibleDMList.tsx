@@ -6,8 +6,7 @@ import { supabase, getWorkspaceUsers, createUserProfile } from '../lib/supabase'
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
 import dynamic from 'next/dynamic'
-import { WebSearchAgentChatModal } from '@/app/agents/web-search-agent/components/WebSearchAgentChatModal'
-import { WebSearchProvider } from '@/app/agents/web-search-agent/hooks'
+import { AgentChatModal } from '@/app/components/AgentChatModal'
 
 interface DMUser {
   id: string;
@@ -18,6 +17,7 @@ interface DMUser {
   pinecone_namespace?: string; // Added for agent-specific RAG
   is_agent?: boolean; // Flag to identify agents
   is_incomplete?: boolean; // Flag to identify incomplete agents
+  description?: string;
 }
 
 interface Section {
@@ -67,7 +67,7 @@ export default function CollapsibleDMList({
   const [selectedAgent, setSelectedAgent] = useState<{
     id: string;
     name: string;
-    pineconeNamespace?: string;
+    description?: string;
   } | null>(null)
   const isCollapsed = controlledIsCollapsed ?? internalIsCollapsed
   const supabase = createClient()
@@ -176,7 +176,8 @@ export default function CollapsibleDMList({
         status: 'online',
         pinecone_namespace: agent.pinecone_namespace,
         is_agent: true,
-        is_incomplete: !agent.agent_files || agent.agent_files.length === 0
+        is_incomplete: !agent.agent_files || agent.agent_files.length === 0,
+        description: agent.description
       }))
 
       // Set current user from real workspace users
@@ -274,12 +275,12 @@ export default function CollapsibleDMList({
       return
     }
 
-    // Special handling for agents - open WebSearchAgentChatModal directly
+    // Special handling for agents - open AgentChatModal directly
     if (user.is_agent) {
       setSelectedAgent({
         id: userId,
         name: user.username,
-        pineconeNamespace: user.pinecone_namespace
+        description: user.description
       })
       return
     }
@@ -386,15 +387,18 @@ export default function CollapsibleDMList({
         </div>
       </div>
 
-      {/* Replace AgentChatModal with WebSearchAgentChatModal */}
+      {/* Replace WebSearchAgentChatModal with new AgentChatModal */}
       {selectedAgent && (
-        <WebSearchProvider>
-          <WebSearchAgentChatModal
-            isOpen={true}
-            agentId={selectedAgent.id}
-            onClose={() => setSelectedAgent(null)}
-          />
-        </WebSearchProvider>
+        <AgentChatModal
+          isOpen={true}
+          onClose={() => setSelectedAgent(null)}
+          agent={{
+            id: selectedAgent.id,
+            name: selectedAgent.name,
+            description: selectedAgent.description || 'An AI assistant to help you with your tasks.',
+            tags: []
+          }}
+        />
       )}
     </>
   )
