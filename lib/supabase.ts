@@ -5,6 +5,7 @@ import type { MessageType, FileAttachment } from '../types/database'
 import type { RealtimePostgresChangesPayload } from '@supabase/realtime-js'
 import { logInfo, logError, logWarning, logDebug, type LogContext } from '@/lib/logger'
 import { md5 } from './md5'
+import type { CookieSerializeOptions } from 'cookie'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -13,7 +14,43 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 export const createBrowserSupabaseClient = () => {
   return createBrowserClient(
     supabaseUrl,
-    supabaseAnonKey
+    supabaseAnonKey,
+    {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      },
+      global: {
+        headers: {
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`
+        }
+      },
+      cookies: {
+        get(name: string) {
+          if (typeof document === 'undefined') return ''
+          const cookie = document.cookie
+            .split('; ')
+            .find(row => row.startsWith(`${name}=`))
+          return cookie ? cookie.split('=')[1] : ''
+        },
+        set(name: string, value: string, options: Partial<CookieSerializeOptions>) {
+          if (typeof document === 'undefined') return
+          let cookieStr = `${name}=${value}`
+          if (options.path) cookieStr += `; path=${options.path}`
+          if (options.maxAge) cookieStr += `; max-age=${options.maxAge}`
+          if (options.domain) cookieStr += `; domain=${options.domain}`
+          if (options.secure) cookieStr += '; secure'
+          if (options.sameSite) cookieStr += `; samesite=${options.sameSite}`
+          document.cookie = cookieStr
+        },
+        remove(name: string, options: Partial<CookieSerializeOptions>) {
+          if (typeof document === 'undefined') return
+          document.cookie = `${name}=; path=${options.path || '/'};max-age=0`
+        }
+      }
+    }
   )
 }
 
@@ -21,7 +58,19 @@ export const createBrowserSupabaseClient = () => {
 export const createServerSupabaseClient = () => {
   return createSupabaseClient(
     supabaseUrl,
-    supabaseAnonKey
+    supabaseAnonKey,
+    {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true
+      },
+      global: {
+        headers: {
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`
+        }
+      }
+    }
   )
 }
 
