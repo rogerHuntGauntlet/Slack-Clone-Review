@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession } from '@supabase/auth-helpers-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/client';
 import { toast } from 'react-hot-toast';
 import { 
   X, 
@@ -205,7 +205,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [capturedImage, setCapturedImage] = useState<Blob | null>(null);
   const [mediaUploadProgress, setMediaUploadProgress] = useState<number>(0);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const threadMessagesEndRef = useRef<HTMLDivElement>(null);
   const mainChatRef = useRef<HTMLDivElement>(null);

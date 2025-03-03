@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/client';
 import { X, Upload, Loader } from 'lucide-react';
 import { FileObject } from '@supabase/storage-js';
 
@@ -14,7 +14,7 @@ interface ImageCatalogModalProps {
 const ImageCatalogModal: React.FC<ImageCatalogModalProps> = ({ onSelect, onUploadNew, onClose }) => {
   const [images, setImages] = useState<{ name: string; url: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     fetchImages();

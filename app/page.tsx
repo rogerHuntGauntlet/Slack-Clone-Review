@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowRight, Sparkles, Leaf, Network, Zap, Users } from 'lucide-react';
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/utils/supabase/client'
 import { checkUserAccess } from '@/utils/checkAccess'
 import { AuthModal } from '@/components/AuthModal'
 import { motion, useScroll, useTransform } from 'framer-motion'
@@ -75,7 +75,7 @@ const Blob = ({ className = "" }) => (
 
 export default function HomePage() {
   const router = useRouter()
-  const supabase = createClientComponentClient()
+  const supabase = createClient()
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [hasAccess, setHasAccess] = useState(false)
   const [loading, setLoading] = useState(true)

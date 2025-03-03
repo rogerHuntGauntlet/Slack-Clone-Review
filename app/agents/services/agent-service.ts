@@ -1,9 +1,9 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/client';
 import { Agent, CreateAgentDTO, UpdateAgentDTO, TrainingFile, FileType } from '../types/agent-types';
 import { mockAgents } from '../data/mock-agents';
 import { AgentRAGService } from './rag-service';
 
-const supabase = createClientComponentClient();
+const supabase = createClient();
 let ragService: AgentRAGService | null = null;
 
 function getRagService(): AgentRAGService {

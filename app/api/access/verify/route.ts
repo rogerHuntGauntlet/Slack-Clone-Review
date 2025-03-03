@@ -1,10 +1,10 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/utils/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 // Initialize service role client for admin operations
-const serviceClient = createClient(
+const serviceClient = createSupabaseClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   try {
     console.log('📝 Creating cookie store and Supabase client');
     const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createSupabaseClient({ cookies: () => cookieStore });
     
     const body = await req.json();
     const { code, riddleAnswer, termsAccepted } = body;

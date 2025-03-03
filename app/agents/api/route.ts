@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAllAgents, createAgent, updateAgent, deleteAgent, createAgentFromTemplate } from '../services/agent-service';
 import { CreateAgentDTO, UpdateAgentDTO } from '../types/agent-types';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 
 export async function GET(request: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = createClient({ cookies });
   const { data: { user } } = await supabase.auth.getUser();
   
   if (!user) {
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = createClient({ cookies });
   const { data: { user } } = await supabase.auth.getUser();
   
   if (!user) {
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = createClient({ cookies });
   const { data: { user } } = await supabase.auth.getUser();
   
   if (!user) {
@@ -63,7 +63,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = createClient({ cookies });
   const { data: { user } } = await supabase.auth.getUser();
   
   if (!user) {

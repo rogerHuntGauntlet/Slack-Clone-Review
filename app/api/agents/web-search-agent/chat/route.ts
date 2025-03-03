@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 import { OpenAI } from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
@@ -12,7 +12,7 @@ const openai = new OpenAI({
 export async function POST(request: Request) {
   try {
     // Verify authentication
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createClient({ cookies });
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
     if (authError || !user) {

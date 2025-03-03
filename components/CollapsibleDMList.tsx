@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { User, ChevronDown, ChevronRight, Edit2, Loader2 } from 'lucide-react'
 import { supabase, getWorkspaceUsers, createUserProfile } from '../lib/supabase'
 import Link from 'next/link'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/utils/supabase/client'
 import dynamic from 'next/dynamic'
 import { WebSearchAgentChatModal } from '@/app/agents/web-search-agent/components/WebSearchAgentChatModal'
 import { WebSearchProvider } from '@/app/agents/web-search-agent/hooks'
@@ -70,7 +70,7 @@ export default function CollapsibleDMList({
     pineconeNamespace?: string;
   } | null>(null)
   const isCollapsed = controlledIsCollapsed ?? internalIsCollapsed
-  const supabase = createClientComponentClient()
+  const supabase = createClient()
   
   const handleCollapse = () => {
     setInternalIsCollapsed(!isCollapsed)

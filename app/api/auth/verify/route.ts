@@ -1,4 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { emailConfig } from '@/lib/auth-config'
@@ -6,7 +6,7 @@ import { emailConfig } from '@/lib/auth-config'
 export async function POST(request: Request) {
   try {
     const { email } = await request.json()
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = createClient({ cookies })
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${request.headers.get('origin')}/auth/callback`,

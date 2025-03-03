@@ -1,5 +1,5 @@
 import { OpenAI } from 'openai';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
@@ -18,7 +18,7 @@ const openai = new OpenAI({
 export async function POST(request: Request) {
   try {
     const { agentId, message, pineconeNamespace } = await request.json();
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createClient({ cookies });
 
     // Get agent details
     const { data: agent, error: agentError } = await supabase

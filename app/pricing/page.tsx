@@ -1,6 +1,6 @@
 import { FC } from 'react';
 import { Check } from 'lucide-react';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 import PricingCard from '../../components/pricing/PricingCard';
 import SessionHandler from '../../components/pricing/SessionHandler';
@@ -37,7 +37,7 @@ const pricingPlans: PricingPlan[] = [
 ];
 
 const PricingPage: FC = async () => {
-    const supabase = createServerComponentClient({ cookies });
+    const supabase = createClient({ cookies });
     const { data: { session } } = await supabase.auth.getSession();
 
     return (

@@ -1,4 +1,4 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/client';
 
 export interface WebSearchFile {
   id: string;
@@ -48,7 +48,7 @@ interface PineconeQueryResponse {
 }
 
 export class WebSearchStorageService {
-  private supabase = createClientComponentClient();
+  private supabase = createClient();
 
   constructor(private agentId: string) {}
 

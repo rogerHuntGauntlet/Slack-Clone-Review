@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/utils/supabase/client'
 import { motion } from 'framer-motion'
 import { User, Briefcase, MessageSquare, Loader2, ArrowRight, Check } from 'lucide-react'
 import { updateUserProfile, createOnboardingWorkspace, createOnboardingChannel } from '@/lib/supabase/onboarding'
@@ -21,7 +21,7 @@ function OnboardingContent() {
   const searchParams = useSearchParams()
   const status = searchParams.get('status')
   const router = useRouter()
-  const supabase = createClientComponentClient()
+  const supabase = createClient()
 
   const [steps, setSteps] = useState<Step[]>([
     {

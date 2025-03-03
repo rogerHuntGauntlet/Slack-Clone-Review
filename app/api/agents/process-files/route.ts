@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 import { FileType } from '@/app/agents/types/agent-types';
 import { OpenAI } from 'openai';
@@ -100,7 +100,7 @@ export async function POST(request: Request) {
     }
 
     // Verify authentication
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createClient({ cookies });
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
     if (authError || !user) {

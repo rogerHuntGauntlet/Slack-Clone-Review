@@ -1,10 +1,10 @@
 import { WebSearchMessage, WebSearchResult } from '../types';
 import { webSearchService } from './web-search-service';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/client';
 
 class WebSearchAgentService {
   private messageHistory: WebSearchMessage[] = [];
-  private supabase = createClientComponentClient();
+  private supabase = createClient();
   private currentAgentId: string | null = null;
   private currentAgentName: string | null = null;
   private isRagEnabled: boolean = false;

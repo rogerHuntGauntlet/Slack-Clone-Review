@@ -1,4 +1,4 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/utils/supabase/client'
 
 interface AgentMessage {
   id: string
@@ -57,7 +57,7 @@ export class AgentChatService {
 
   constructor(agentId: string) {
     this.agentId = agentId;
-    this.supabase = createClientComponentClient();
+    this.supabase = createClient();
   }
 
   setRagMode(enabled: boolean) {

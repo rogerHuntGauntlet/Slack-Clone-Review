@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 
@@ -17,7 +17,7 @@ const TicketSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createClient({ cookies });
     
     // Verify authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createClient({ cookies });
     
     // Verify authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();

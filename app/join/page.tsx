@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/utils/supabase/client'
 import { Loader2 } from 'lucide-react'
 import { addUserToUniversalWorkspace } from '@/lib/supabase'
 
@@ -10,7 +10,7 @@ import { addUserToUniversalWorkspace } from '@/lib/supabase'
 function JoinContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const supabase = createClientComponentClient()
+  const supabase = createClient()
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [workspaceName, setWorkspaceName] = useState<string | null>(null)

@@ -1,6 +1,6 @@
 import { FC, useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, PauseCircle, PlayCircle, ChevronLeft, UserPlus, Bot } from 'lucide-react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/utils/supabase/client'
 import type { Database } from '@/types/supabase'
 
 type Tables = Database['public']['Tables']
@@ -31,7 +31,7 @@ const ActivityFeed: FC<ActivityFeedProps> = ({ className = '' }) => {
   const [activities, setActivities] = useState<ActivityItem[]>([])
   const [isPaused, setIsPaused] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
-  const supabase = createClientComponentClient()
+  const supabase = createClient()
 
   useEffect(() => {
     // Set up realtime subscriptions for new users and agents

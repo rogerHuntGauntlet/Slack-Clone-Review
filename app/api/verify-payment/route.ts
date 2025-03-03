@@ -1,4 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createClient({ cookies });
     
     // Get the current user session
     const { data: { session: supabaseSession }, error: sessionError } = await supabase.auth.getSession();
