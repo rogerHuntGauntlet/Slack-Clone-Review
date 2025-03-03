@@ -1,9 +1,11 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
 import type { AuthUser } from '@supabase/supabase-js'
-import type { Session, User } from 'next-auth'
 
 // Initialize Supabase client
-export const supabase = createClientComponentClient()
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 // Helper to get redirect URL that uses the current origin
 export const getRedirectUrl = () => {
@@ -27,7 +29,7 @@ export const emailConfig = {
 }
 
 // Function to check user payment status
-async function checkUserPaymentStatus(userId: string): Promise<boolean> {
+export async function checkUserPaymentStatus(userId: string): Promise<boolean> {
   try {
     // Check for any active access record (payment, riddle, or founder code)
     const { data: accessRecord } = await supabase
@@ -65,24 +67,8 @@ async function checkUserPaymentStatus(userId: string): Promise<boolean> {
   }
 }
 
-// Auth configuration
-export const authConfig = {
-  providers: ['github', 'google'] as const,
-  callbacks: {
-    redirectTo: getRedirectUrl(),
-    async session({ session, user }: { session: Session | null; user: User & { id: string } }) {
-      // Check if user needs to complete payment
-      const needsPayment = await checkUserPaymentStatus(user.id)
-      if (needsPayment) {
-        return {
-          ...session,
-          redirectUrl: '/access'
-        }
-      }
-      return session
-    }
-  },
-  // Supabase specific settings
+// Supabase auth configuration
+export const supabaseAuthConfig = {
   autoRefreshToken: true,
   persistSession: true,
   detectSessionInUrl: true,
