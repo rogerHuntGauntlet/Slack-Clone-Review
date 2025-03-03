@@ -1,6 +1,6 @@
 # Slack Clone
 
-A modern Slack clone built with Next.js 14, NextAuth.js, and Tailwind CSS. Features real-time messaging, reactions, thread replies, and file attachments.
+A modern Slack clone built with Next.js 14, Supabase, and Tailwind CSS. Features real-time messaging, reactions, thread replies, and file attachments.
 
 ## Live Demo
 
@@ -28,13 +28,13 @@ cd Slack-Clone-Review
 - 👥 Workspace and channel management
 - 🌓 Dark mode support
 - 🎨 Modern UI with Tailwind CSS
-- 🔒 Authentication with NextAuth.js
 
 ## Tech Stack
 
 - **Frontend**: Next.js 14.2, React, TypeScript
 - **Styling**: Tailwind CSS
-- **Authentication**: NextAuth.js
+- **Backend & Auth**: Supabase
+- **Database**: PostgreSQL (via Supabase)
 - **Deployment**: Vercel (recommended)
 
 ## Getting Started
@@ -56,8 +56,13 @@ npm install
    Create a `.env.local` file with the following:
 
 ```env
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your_nextauth_secret # Generate a secure secret: `openssl rand -base64 32`
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# Optional: Other configurations
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
 4. Start the development server:
@@ -72,19 +77,39 @@ The application will be available at `http://localhost:3000`.
 
 This project is configured for deployment on Vercel. To deploy your own instance:
 
-1. Fork the repository to your GitHub account
-2. Create a new project on [Vercel](https://vercel.com)
-3. Connect your GitHub repository to Vercel
-4. Configure the following environment variables in your Vercel project settings:
+1. Create a new project on [Supabase](https://supabase.com)
+2. Fork this repository to your GitHub account
+3. Create a new project on [Vercel](https://vercel.com)
+4. Connect your GitHub repository to Vercel
+5. Configure the following environment variables in your Vercel project settings:
 
 ```env
-NEXTAUTH_URL=https://your-domain.vercel.app
-NEXTAUTH_SECRET=your_nextauth_secret
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 ```
 
-5. Deploy! Vercel will automatically build and deploy your project
+6. Deploy! Vercel will automatically build and deploy your project
 
 The project will automatically deploy when you push changes to the main branch.
+
+## Database Schema
+
+The project uses Supabase as the backend. The database schema is managed through Supabase's interface or migrations. Here's the basic structure:
+
+```sql
+-- Users table (managed by Supabase Auth)
+-- Messages table
+create table messages (
+  id uuid default uuid_generate_v4() primary key,
+  content text not null,
+  user_id uuid references auth.users not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Add more tables as needed
+```
 
 ## Contributing
 

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "npm install prisma && npx prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "vectorize": "ts-node scripts/vectorize-all.ts",
@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@auth/core": "^0.34.2",
+    "@auth/prisma-adapter": "^2.8.0",
     "@dicebear/avatars": "^4.10.8",
     "@dicebear/avatars-identicon-sprites": "^4.10.8",
     "@dicebear/collection": "^9.2.2",
