@@ -56,13 +56,13 @@ interface CustomSpeechRecognition {
 
 interface WebSearchAgentChatModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  onCloseAction: () => void;
   agentId: string;
 }
 
 export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = ({
   isOpen,
-  onClose,
+  onCloseAction,
   agentId,
 }) => {
   const { 
@@ -132,34 +132,48 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
     scrollToBottom();
   }, [messages]);
 
-  // Initialize voice synthesis
+  // Initialize voice synthesis with error handling
   useEffect(() => {
-    if ('speechSynthesis' in window) {
-      const loadVoices = () => {
-        const voices = window.speechSynthesis.getVoices();
-        if (voices.length > 0) {
-          const preferredVoice = voices.find(
-            voice => 
-              voice.lang.startsWith('en') && 
-              (voice.name.includes('Neural') || 
-               voice.name.includes('Natural') ||
-               !voice.name.includes('Microsoft'))
-          );
-          if (preferredVoice) {
-            const warmupUtterance = new SpeechSynthesisUtterance('');
-            warmupUtterance.voice = preferredVoice;
-            warmupUtterance.volume = 0;
-            window.speechSynthesis.speak(warmupUtterance);
+    try {
+      if ('speechSynthesis' in window) {
+        const loadVoices = () => {
+          try {
+            const voices = window.speechSynthesis.getVoices();
+            if (voices.length > 0) {
+              const preferredVoice = voices.find(
+                voice => 
+                  voice.lang.startsWith('en') && 
+                  (voice.name.includes('Neural') || 
+                   voice.name.includes('Natural') ||
+                   !voice.name.includes('Microsoft'))
+              );
+              if (preferredVoice) {
+                const warmupUtterance = new SpeechSynthesisUtterance('');
+                warmupUtterance.voice = preferredVoice;
+                warmupUtterance.volume = 0;
+                window.speechSynthesis.speak(warmupUtterance);
+              }
+            }
+          } catch (error) {
+            console.error('Error loading voices:', error);
+            // Continue without voice synthesis
           }
-        }
-      };
+        };
 
-      loadVoices();
-      window.speechSynthesis.onvoiceschanged = loadVoices;
-      
-      return () => {
-        window.speechSynthesis.onvoiceschanged = null;
-      };
+        loadVoices();
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+        
+        return () => {
+          try {
+            window.speechSynthesis.onvoiceschanged = null;
+          } catch (error) {
+            console.error('Error cleaning up voice synthesis:', error);
+          }
+        };
+      }
+    } catch (error) {
+      console.error('Error initializing voice synthesis:', error);
+      // Continue without voice synthesis
     }
   }, []);
 
@@ -167,7 +181,6 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
     if (!('speechSynthesis' in window) || isMuted) return;
     
     try {
-      // Get voice-friendly summary first
       const response = await fetch('/api/agents/web-search-agent/summarize-for-voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -181,41 +194,47 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
       const { voiceSummary } = await response.json();
       if (!voiceSummary) return;
 
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(voiceSummary);
-      utterance.rate = 1.1;
-      utterance.pitch = 1.0;
-      utterance.volume = 1.0;
-      
-      const voices = window.speechSynthesis.getVoices();
-      const preferredVoice = voices.find(
-        voice => 
-          voice.lang.startsWith('en') && 
-          (voice.name.includes('Neural') || 
-           voice.name.includes('Natural') ||
-           !voice.name.includes('Microsoft'))
-      );
-      
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(voiceSummary);
+        utterance.rate = 1.1;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+        
+        const voices = window.speechSynthesis.getVoices();
+        const preferredVoice = voices.find(
+          voice => 
+            voice.lang.startsWith('en') && 
+            (voice.name.includes('Neural') || 
+             voice.name.includes('Natural') ||
+             !voice.name.includes('Microsoft'))
+        );
+        
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+        }
+
+        utterance.onstart = () => {
+          setIsAvatarSpeaking(true);
+          setAvatarEmotion('happy');
+        };
+
+        utterance.onend = () => {
+          setIsAvatarSpeaking(false);
+          setAvatarEmotion('neutral');
+        };
+
+        utterance.onerror = () => {
+          setIsAvatarSpeaking(false);
+          setAvatarEmotion('neutral');
+        };
+
+        window.speechSynthesis.speak(utterance);
+      } catch (error) {
+        console.error('Error in speech synthesis:', error);
+        setIsAvatarSpeaking(false);
+        setAvatarEmotion('neutral');
       }
-
-      utterance.onstart = () => {
-        setIsAvatarSpeaking(true);
-        setAvatarEmotion('happy');
-      };
-
-      utterance.onend = () => {
-        setIsAvatarSpeaking(false);
-        setAvatarEmotion('neutral');
-      };
-
-      utterance.onerror = () => {
-        setIsAvatarSpeaking(false);
-        setAvatarEmotion('neutral');
-      };
-
-      window.speechSynthesis.speak(utterance);
     } catch (error) {
       console.error('Error in voice synthesis:', error);
       setIsAvatarSpeaking(false);
@@ -223,7 +242,7 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
     }
   };
 
-  // Initialize web search agent
+  // Initialize web search agent with error handling
   useEffect(() => {
     const initializeAgent = async () => {
       try {
@@ -232,15 +251,13 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
         console.log('Initializing web search agent with ID:', agentId);
         await webSearchAgentService.initializeAgent(agentId);
         setIsRagEnabled(true);
-        setAgentName(webSearchAgentService.getCurrentAgentName());
-        console.log('Web search agent initialized successfully:', {
-          agentName: webSearchAgentService.getCurrentAgentName(),
-          isRagEnabled: true
-        });
+        setAgentName(webSearchAgentService.getCurrentAgentName() || 'AI Assistant');
       } catch (error) {
         console.error('Error initializing web search:', error);
         setIsRagEnabled(false);
         setRagError(error instanceof Error ? error.message : 'Failed to initialize web search');
+        // Set a fallback agent name if initialization fails
+        setAgentName('AI Assistant');
       } finally {
         setIsCheckingRag(false);
       }
@@ -249,30 +266,47 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
     initializeAgent();
 
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
+      try {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current = null;
+        }
+        window.speechSynthesis.cancel();
+      } catch (error) {
+        console.error('Error cleaning up audio:', error);
       }
-      window.speechSynthesis.cancel();
     };
   }, [agentId]);
 
-  // Add initial greeting after initialization
+  // Add initial greeting with error handling
   useEffect(() => {
-    if (messages.length === 0 && agentName) {
-      const greetingMessage = {
+    try {
+      if (messages.length === 0 && agentName) {
+        const greetingMessage = {
+          id: Date.now().toString(),
+          content: `Hi there! I'm ${agentName}. ${isRagEnabled ? 
+            "I can help you find information from the internet or chat directly with you. Use the toggle above to switch modes." : 
+            "I can chat with you about any topic you'd like."}`,
+          role: 'assistant' as const,
+          timestamp: new Date(),
+        };
+        setMessages([greetingMessage]);
+        
+        if (!isMuted) {
+          speakWithWebSpeech(greetingMessage.content).catch(error => {
+            console.error('Error speaking greeting:', error);
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error setting initial greeting:', error);
+      // Set a basic greeting if the custom one fails
+      setMessages([{
         id: Date.now().toString(),
-        content: `Hi there! I'm ${agentName}. ${isRagEnabled ? 
-          "I can help you find information from the internet or chat directly with you. Use the toggle above to switch modes." : 
-          "I can chat with you about any topic you'd like."}`,
+        content: "Hello! I'm here to help you.",
         role: 'assistant' as const,
         timestamp: new Date(),
-      };
-      setMessages([greetingMessage]);
-      
-      if (!isMuted) {
-        speakWithWebSpeech(greetingMessage.content);
-      }
+      }]);
     }
   }, [agentName, isRagEnabled, isMuted, messages.length]);
 
@@ -316,10 +350,26 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
 
     try {
       // Perform web search
-      await search(inputValue);
+      if (isRagMode) {
+        try {
+          await search(inputValue);
+        } catch (error) {
+          console.error('Web search failed:', error);
+          // Continue with basic chat if web search fails
+        }
+      }
 
       // Use the search results in the agent's response
-      const response = await webSearchAgentService.sendMessage(inputValue, false);
+      let response;
+      try {
+        response = await webSearchAgentService.sendMessage(inputValue, false);
+      } catch (error) {
+        console.error('Error getting agent response:', error);
+        response = {
+          content: "I apologize, but I'm having trouble processing your request. Please try again or rephrase your question.",
+          citations: []
+        };
+      }
       
       const assistantMessage: WebSearchMessage = {
         id: Date.now().toString(),
@@ -333,13 +383,21 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
       
       // Speak the response if speech is enabled
       if (!isMuted) {
-        await speakWithWebSpeech(response.content, searchResults);
+        try {
+          await speakWithWebSpeech(response.content, searchResults);
+        } catch (error) {
+          console.error('Error speaking response:', error);
+        }
       }
 
       // Store the conversation
       if (storageServiceRef.current) {
-        await storageServiceRef.current.storeMessage(userMessage);
-        await storageServiceRef.current.storeMessage(assistantMessage);
+        try {
+          await storageServiceRef.current.storeMessage(userMessage);
+          await storageServiceRef.current.storeMessage(assistantMessage);
+        } catch (error) {
+          console.error('Error storing messages:', error);
+        }
       }
 
     } catch (error) {
@@ -347,7 +405,7 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
       const errorMessage: WebSearchMessage = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: 'Sorry, there was an error processing your request.',
+        content: 'Sorry, there was an error processing your request. Please try again.',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -660,7 +718,7 @@ export const WebSearchAgentChatModal: React.FC<WebSearchAgentChatModalProps> = (
               </div>
             )}
             <button
-              onClick={onClose}
+              onClick={onCloseAction}
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
             >
               <X size={20} />
