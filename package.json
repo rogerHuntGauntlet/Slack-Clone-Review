@@ -15,7 +15,7 @@
     "@dicebear/core": "^9.2.2",
     "@dqbd/tiktoken": "^1.0.18",
     "@elastic/elasticsearch": "^8.17.0",
-    "@headlessui/react": "^2.2.0",
+    "@headlessui/react": "^1.7.17",
     "@heroicons/react": "^2.2.0",
     "@langchain/core": "^0.3.30",
     "@langchain/openai": "^0.3.17",
