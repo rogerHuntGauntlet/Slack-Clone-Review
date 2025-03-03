@@ -56,6 +56,37 @@ const MAX_USERS = 40
 export default function Platform() {
   const [logs, setLogs] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [workspaces, setWorkspaces] = useState<{ id: string; name: string; role: string }[]>([])
+  const [user, setUser] = useState<{ id: string; email: string; username?: string } | null>(null)
+  const [activeWorkspace, setActiveWorkspace] = useState('')
+  const [activeChannel, setActiveChannel] = useState('')
+  const [activeDM, setActiveDM] = useState<string | null>(null)
+  const [newWorkspaceName, setNewWorkspaceName] = useState('')
+  const [isDarkMode, setIsDarkMode] = useState(true)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [joiningWorkspaceName, setJoiningWorkspaceName] = useState<string | null>(null)
+  const [showWorkspaceSelection, setShowWorkspaceSelection] = useState(false)
+  const [userWorkspaceIds, setUserWorkspaceIds] = useState<string[]>([])
+  const [userCount, setUserCount] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false)
+  const [email, setEmail] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [showSearchResults, setShowSearchResults] = useState(false)
+  const [isDMListCollapsed, setIsDMListCollapsed] = useState(false)
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null)
+
+  // Add mobile-specific states
+  const isMobile = useMediaQuery('(max-width: 768px)')
+  const [showMobileChat, setShowMobileChat] = useState(false)
+  const [showMobileMenu, setShowMobileMenu] = useState(false)
+
+  const supabase = getSupabaseClient()
+  const [session, setSession] = useState<any>(null)
+  const [messages, setMessages] = useState<any[]>([])
+  const [currentDirectMessage, setCurrentDirectMessage] = useState<any>(null)
 
   const addLog = useCallback((message: string) => {
     setLogs(prev => [...prev, `${new Date().toLocaleTimeString()} - ${message}`])
@@ -95,13 +126,14 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   console.log('Platform: PlatformContent mounting with initialWorkspaceId:', initialWorkspaceId);
 
   const router = useRouter()
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [workspaces, setWorkspaces] = useState<{ id: string; name: string; role: string }[]>([])
   const [user, setUser] = useState<{ id: string; email: string; username?: string } | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState('')
   const [activeChannel, setActiveChannel] = useState('')
   const [activeDM, setActiveDM] = useState<string | null>(null)
-  const [workspaces, setWorkspaces] = useState<{ id: string; name: string; role: string }[]>([])
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
-  const [success, setSuccess] = useState<string | null>(null)
   const [isDarkMode, setIsDarkMode] = useState(true)
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [joiningWorkspaceName, setJoiningWorkspaceName] = useState<string | null>(null)
@@ -126,6 +158,17 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   const [session, setSession] = useState<any>(null)
   const [messages, setMessages] = useState<any[]>([])
   const [currentDirectMessage, setCurrentDirectMessage] = useState<any>(null)
+
+  const handleUpdateDescription = useCallback(async (workspaceId: string, description: string) => {
+    try {
+      await updateWorkspace(workspaceId, { description });
+      const updatedWorkspaces = await getWorkspaces(user?.id);
+      setWorkspaces(updatedWorkspaces);
+      setSuccess('Description updated successfully');
+    } catch (error) {
+      setError('Failed to update description');
+    }
+  }, [user?.id]);
 
   const fetchChannels = useCallback(async (workspaceId: string) => {
     if (!workspaceId) {
@@ -797,17 +840,6 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
       setTimeout(() => setError(null), 3000)
     }
   }
-
-  const handleUpdateDescription = async (workspaceId: string, description: string) => {
-    try {
-      await updateWorkspace(workspaceId, { description });
-      const updatedWorkspaces = await getWorkspaces(user?.id);
-      setWorkspaces(updatedWorkspaces);
-      setSuccess('Description updated successfully');
-    } catch (error) {
-      setError('Failed to update description');
-    }
-  };
 
   // Add effect to fetch workspace name when active workspace changes
   useEffect(() => {
