@@ -37,50 +37,65 @@ async function processFileContent(
   agentId: string,
   namespace: string
 ): Promise<void> {
-  console.log(`Processing file ${file.name} for agent ${agentId} in namespace ${namespace}`);
-  
-  const CHUNK_SIZE = 500;
-  const CHUNK_OVERLAP = 50;
-  
-  // Read file content
-  const content = await file.text();
-  console.log(`File content length: ${content.length} characters`);
-  
-  // Split into chunks
-  const chunks: string[] = [];
-  let currentIndex = 0;
-  while (currentIndex < content.length) {
-    const chunkEnd = Math.min(currentIndex + CHUNK_SIZE, content.length);
-    chunks.push(content.slice(currentIndex, chunkEnd));
-    currentIndex += CHUNK_SIZE - CHUNK_OVERLAP;
-  }
-  console.log(`Split content into ${chunks.length} chunks`);
-
-  // Get Pinecone index
-  const index = pinecone.index('agent-store');
-  console.log('Got Pinecone index: agent-store');
-
-  // Process chunks
-  for (let i = 0; i < chunks.length; i++) {
-    console.log(`Processing chunk ${i + 1}/${chunks.length}`);
-    const chunk = chunks[i];
-    const embedding = await generateEmbedding(chunk);
-    console.log(`Generated embedding for chunk ${i + 1}`);
+  try {
+    console.log(`Processing file ${file.name} for agent ${agentId} in namespace ${namespace}`);
     
-    // Store in Pinecone
-    await index.namespace(namespace).upsert([{
-      id: `${agentId}-${file.name}-${i}`,
-      values: embedding,
-      metadata: {
-        agentId,
-        fileName: file.name,
-        chunkIndex: i,
-        content: chunk
+    const CHUNK_SIZE = 500;
+    const CHUNK_OVERLAP = 50;
+    
+    // Read file content
+    const content = await file.text().catch((error: Error) => {
+      console.error(`Error reading file ${file.name}: ${error.message}`);
+      throw new Error(`Failed to read file: ${error.message}`);
+    });
+    console.log(`File content length: ${content.length} characters`);
+    
+    // Split into chunks
+    const chunks: string[] = [];
+    let currentIndex = 0;
+    while (currentIndex < content.length) {
+      const chunkEnd = Math.min(currentIndex + CHUNK_SIZE, content.length);
+      chunks.push(content.slice(currentIndex, chunkEnd));
+      currentIndex += CHUNK_SIZE - CHUNK_OVERLAP;
+    }
+    console.log(`Split content into ${chunks.length} chunks`);
+
+    // Get Pinecone index
+    const index = pinecone.index('agent-store');
+    console.log('Got Pinecone index: agent-store');
+
+    // Process chunks
+    for (let i = 0; i < chunks.length; i++) {
+      try {
+        console.log(`Processing chunk ${i + 1}/${chunks.length}`);
+        const chunk = chunks[i];
+        const embedding = await generateEmbedding(chunk);
+        console.log(`Generated embedding for chunk ${i + 1}`);
+        
+        // Store in Pinecone
+        await index.namespace(namespace).upsert([{
+          id: `${agentId}-${file.name}-${i}`,
+          values: embedding,
+          metadata: {
+            agentId,
+            fileName: file.name,
+            chunkIndex: i,
+            content: chunk
+          }
+        }]);
+        console.log(`Stored chunk ${i + 1} in Pinecone namespace ${namespace}`);
+      } catch (error) {
+        const chunkError = error as Error;
+        console.error(`Error processing chunk ${i + 1}: ${chunkError.message}`);
+        throw new Error(`Failed to process chunk ${i + 1}: ${chunkError.message}`);
       }
-    }]);
-    console.log(`Stored chunk ${i + 1} in Pinecone namespace ${namespace}`);
+    }
+    console.log(`Completed processing file ${file.name}`);
+  } catch (error) {
+    const processError = error as Error;
+    console.error(`Error in processFileContent for file ${file.name}: ${processError.message}`);
+    throw error;
   }
-  console.log(`Completed processing file ${file.name}`);
 }
 
 export async function POST(request: Request) {

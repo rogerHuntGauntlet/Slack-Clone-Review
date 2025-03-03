@@ -9,7 +9,8 @@ const nextConfig = {
       'localhost',
       'www.gravatar.com',
       'your-default-ai-avatar.com',
-      'avatars.githubusercontent.com'
+      'avatars.githubusercontent.com',
+      'cdn.discordapp.com'
     ],
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
@@ -37,6 +38,21 @@ const nextConfig = {
       test: /\.wasm$/,
       type: 'webassembly/async'
     })
+
+    // Add favicon configuration
+    config.module.rules.push({
+      test: /\.(ico|png|svg|xml|webmanifest)$/,
+      use: [
+        {
+          loader: 'file-loader',
+          options: {
+            name: '[name].[ext]',
+            outputPath: 'static/icons/',
+            publicPath: '/_next/static/icons/'
+          }
+        }
+      ]
+    });
 
     return config
   },

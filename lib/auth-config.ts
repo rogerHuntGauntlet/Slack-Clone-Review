@@ -10,7 +10,7 @@ export const supabase = createBrowserClient(
 // Helper to get redirect URL that uses the current origin
 export const getRedirectUrl = () => {
   if (typeof window === 'undefined') return ''
-  return 'https://www.ohfpartners.com/access?redirectedfromauth=supabase'
+  return `${window.location.origin}/api/auth/callback`
 }
 
 // Email configuration
