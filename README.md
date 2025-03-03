@@ -1,6 +1,6 @@
 # Slack Clone
 
-A modern Slack clone built with Next.js 13, Supabase, and Tailwind CSS. Features real-time messaging, reactions, thread replies, and file attachments.
+A modern Slack clone built with Next.js 14, NextAuth.js, and Tailwind CSS. Features real-time messaging, reactions, thread replies, and file attachments.
 
 ## Live Demo
 
@@ -19,24 +19,6 @@ git clone https://github.com/rogerHuntGauntlet/Slack-Clone-Review.git
 cd Slack-Clone-Review
 ```
 
-## Deployment
-
-This project is deployed on Vercel. To deploy your own instance:
-
-1. Fork the repository to your GitHub account
-2. Create a new project on [Vercel](https://vercel.com)
-3. Connect your GitHub repository to Vercel
-4. Configure the following environment variables in your Vercel project settings:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
-
-5. Deploy! Vercel will automatically build and deploy your project
-
-The project will automatically deploy when you push changes to the main branch.
-
 ## Features
 
 - 🔄 Real-time messaging and updates
@@ -46,15 +28,13 @@ The project will automatically deploy when you push changes to the main branch.
 - 👥 Workspace and channel management
 - 🌓 Dark mode support
 - 🎨 Modern UI with Tailwind CSS
-- 🔒 Authentication with Supabase
+- 🔒 Authentication with NextAuth.js
 
 ## Tech Stack
 
-- **Frontend**: Next.js 13, React, TypeScript
-- **Styling**: Tailwind CSS, Framer Motion
-- **Backend**: Supabase (PostgreSQL, Real-time subscriptions)
-- **Authentication**: Supabase Auth
-- **File Storage**: Supabase Storage
+- **Frontend**: Next.js 14.2, React, TypeScript
+- **Styling**: Tailwind CSS
+- **Authentication**: NextAuth.js
 - **Deployment**: Vercel (recommended)
 
 ## Getting Started
@@ -76,8 +56,8 @@ npm install
    Create a `.env.local` file with the following:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your_nextauth_secret # Generate a secure secret: `openssl rand -base64 32`
 ```
 
 4. Start the development server:
@@ -86,26 +66,25 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 npm run dev
 ```
 
-5. Initialize and start Supabase:
+The application will be available at `http://localhost:3000`.
 
-```bash
-npx supabase init
-npx supabase start
+## Deployment
+
+This project is configured for deployment on Vercel. To deploy your own instance:
+
+1. Fork the repository to your GitHub account
+2. Create a new project on [Vercel](https://vercel.com)
+3. Connect your GitHub repository to Vercel
+4. Configure the following environment variables in your Vercel project settings:
+
+```env
+NEXTAUTH_URL=https://your-domain.vercel.app
+NEXTAUTH_SECRET=your_nextauth_secret
 ```
 
-6. Run database migrations:
+5. Deploy! Vercel will automatically build and deploy your project
 
-```bash
-npx supabase db reset
-```
-
-## Database Setup
-
-The project uses Supabase as the backend. The database schema and migrations are located in the `supabase/migrations` directory. Run migrations to set up your database:
-
-```bash
-npx supabase db reset
-```
+The project will automatically deploy when you push changes to the main branch.
 
 ## Contributing
 
