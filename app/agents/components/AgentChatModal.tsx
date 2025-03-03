@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Minimize2, Maximize2, Volume2, VolumeX } from 'lucide-react'
 import { AnimatedAvatar } from '@/components/AnimatedAvatar'
 import { sendMessageToAgent, getAgentChatHistory } from '../services/agent-chat-service'
+import { AgentInitializer } from '../services/agent-initializer'
 
 interface AgentChatModalProps {
   agentId: string
@@ -13,6 +14,18 @@ interface AgentChatModalProps {
   onWebSearchClick?: () => void
 }
 
+interface Message {
+  id: string;
+  content: string;
+  role: 'user' | 'assistant';
+  timestamp: Date;
+  sources?: Array<{
+    title: string;
+    content: string;
+    relevance: number;
+  }>;
+}
+
 export default function AgentChatModal({ 
   agentId, 
   agentName,
@@ -20,28 +33,20 @@ export default function AgentChatModal({
   pineconeNamespace,
   onWebSearchClick
 }: AgentChatModalProps) {
-  const [messages, setMessages] = useState<Array<{
-    id: string
-    content: string
-    role: 'user' | 'agent'
-    timestamp: Date
-    sources?: Array<{
-      title: string
-      content: string
-      relevance: number
-    }>
-  }>>([])
-  const [inputValue, setInputValue] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
   const [loadingPhase, setLoadingPhase] = useState<'rag' | 'llm' | 'streaming' | null>(null)
   const [isSummarizing, setIsSummarizing] = useState(false)
   const [avatarEmotion, setAvatarEmotion] = useState<'neutral' | 'happy' | 'thinking' | 'surprised'>('happy')
   const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(true)
   const [isAvatarCollapsed, setIsAvatarCollapsed] = useState(false)
   const [currentSummary, setCurrentSummary] = useState<string>('')
-  const [isMuted, setIsMuted] = useState(false)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const chatContainerRef = useRef<HTMLDivElement>(null)
 
   // Function to scroll to bottom of chat
   const scrollToBottom = (behavior: 'auto' | 'smooth' = 'smooth') => {
@@ -235,52 +240,50 @@ export default function AgentChatModal({
     }
   };
 
+  // Initialize agent
   useEffect(() => {
-    // Load chat history first
-    const loadChatHistory = async () => {
+    const initAgent = async () => {
       try {
-        const history = await getAgentChatHistory(agentId)
-        const greetingMessage = {
-          id: Date.now().toString(),
-          content: `Hi there! I'm ${agentName}. How can I help you today?`,
-          role: 'agent' as const,
-          timestamp: new Date(),
-        }
+        setIsInitializing(true);
+        setError(null);
         
-        if (history?.length > 0) {
-          // Take the last 9 messages from history (to leave room for greeting)
-          const recentHistory = history.slice(-9)
-          // Set messages with greeting first, then recent history
-          setMessages([greetingMessage, ...recentHistory])
-        } else {
-          // If no history, just set the greeting
-          setMessages([greetingMessage])
+        const initializer = AgentInitializer.getInstance();
+        const result = await initializer.initializeAgent(agentId);
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to initialize agent');
+        }
+
+        // Add initial greeting
+        const greetingMessage: Message = {
+          id: Date.now().toString(),
+          content: `Hi there! I'm ${result.agentData?.name || agentName}. How can I help you today?`,
+          role: 'assistant',
+          timestamp: new Date(),
+        };
+        setMessages([greetingMessage]);
+        
+        if (!isMuted) {
+          speakWithWebSpeech(greetingMessage.content);
         }
       } catch (error) {
-        console.error('Error loading chat history:', error)
-        // If error, at least show the greeting
-        const greetingMessage = {
-          id: Date.now().toString(),
-          content: `Hi there! I'm ${agentName}. How can I help you today?`,
-          role: 'agent' as const,
-          timestamp: new Date(),
-        }
-        setMessages([greetingMessage])
+        console.error('Error initializing agent:', error);
+        setError(error instanceof Error ? error.message : 'Failed to initialize agent');
+      } finally {
+        setIsInitializing(false);
       }
-    }
-    
-    loadChatHistory()
-    playGreeting()
+    };
 
-    // Cleanup on unmount
+    initAgent();
+
     return () => {
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
       }
-      window.speechSynthesis.cancel()
-    }
-  }, [agentId, agentName, isMuted])
+      window.speechSynthesis.cancel();
+    };
+  }, [agentId, agentName, isMuted]);
 
   // Function to generate a summary of the agent's response
   const generateSummary = async (content: string) => {
@@ -301,19 +304,19 @@ export default function AgentChatModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inputValue.trim() || isLoading) return
+    if (!input.trim() || isLoading) return
 
-    console.log('🎯 Submitting message:', inputValue);
+    console.log('🎯 Submitting message:', input);
     
-    const userMessage = {
+    const userMessage: Message = {
       id: Date.now().toString(),
-      content: inputValue,
-      role: 'user' as const,
+      content: input,
+      role: 'user',
       timestamp: new Date()
     }
 
     setMessages(prev => [...prev, userMessage])
-    setInputValue('')
+    setInput('')
     setIsLoading(true)
     setLoadingPhase('rag')
     setAvatarEmotion('thinking')
@@ -324,10 +327,10 @@ export default function AgentChatModal({
 
     // Create a placeholder for the agent's response
     const agentMessageId = (Date.now() + 1).toString()
-    const agentMessage = {
+    const agentMessage: Message = {
       id: agentMessageId,
       content: '',
-      role: 'agent' as const,
+      role: 'assistant',
       timestamp: new Date()
     }
     setMessages(prev => [...prev, agentMessage])
@@ -343,7 +346,7 @@ export default function AgentChatModal({
       
       const response = await sendMessageToAgent(
         agentId, 
-        inputValue,
+        input,
         async (chunk) => {
           if (!accumulatedMessage) {
             console.log('📝 Received first chunk, switching to streaming phase');
@@ -566,7 +569,7 @@ export default function AgentChatModal({
                   }`}
                 >
                   <div className="prose dark:prose-invert">
-                    {message.role === 'agent' && (
+                    {message.role === 'assistant' && (
                       <div className="flex items-center gap-2 mb-2">
                         <span className={`text-xs px-2 py-0.5 rounded ${
                           message.sources ? 
@@ -648,8 +651,8 @@ export default function AgentChatModal({
             <div className="flex space-x-2">
               <input
                 type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
                 placeholder="Type your message..."
                 className="flex-1 p-2 border dark:border-gray-600 rounded-lg bg-transparent"
                 disabled={isLoading}

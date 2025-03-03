@@ -4,6 +4,8 @@ import { useState, useEffect, Suspense, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { Workspace } from '@/types/supabase'
+import React from 'react'
+import { ErrorBoundary } from 'react-error-boundary'
 
 // Import components that use browser APIs dynamically
 const DynamicChatArea = dynamic(() => import('../../components/ChatArea'), { ssr: false })
@@ -53,6 +55,7 @@ const MAX_USERS = 40
 
 export default function Platform() {
   const [logs, setLogs] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   const addLog = useCallback((message: string) => {
     setLogs(prev => [...prev, `${new Date().toLocaleTimeString()} - ${message}`])
@@ -66,13 +69,15 @@ export default function Platform() {
   }, [])
 
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-      </div>
-    }>
-      <PlatformWithParams addLog={addLog} />
-    </Suspense>
+    <ErrorBoundary fallback={<div>Something went wrong. Please refresh the page.</div>}>
+      <Suspense fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+        </div>
+      }>
+        <PlatformWithParams addLog={addLog} />
+      </Suspense>
+    </ErrorBoundary>
   )
 }
 
@@ -96,7 +101,6 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   const [activeDM, setActiveDM] = useState<string | null>(null)
   const [workspaces, setWorkspaces] = useState<{ id: string; name: string; role: string }[]>([])
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [isDarkMode, setIsDarkMode] = useState(true)
   const [showProfileModal, setShowProfileModal] = useState(false)
@@ -1130,4 +1134,30 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
       </div>
     </div>
   )
+}
+
+// Add ErrorBoundary component
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Platform Error:', error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback
+    }
+    return this.props.children
+  }
 }
