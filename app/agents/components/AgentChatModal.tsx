@@ -366,7 +366,7 @@ export default function AgentChatModal({
           });
           
           accumulatedMessage += chunk;
-          scrollToBottom('auto');
+          scrollToBottom('smooth');
           
           // Generate summary more frequently for better voice feedback
           if (accumulatedMessage.length - lastSummaryLength >= summaryUpdateThreshold) {
