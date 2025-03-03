@@ -999,13 +999,16 @@ export const createUserProfile = async (user: { id: string; email?: string }) =>
 
     const { data: profile, error: insertError } = await supabase
       .from('user_profiles')
-      .insert({
+      .upsert({
         id: user.id,
         email: user.email,
         username: user.email?.split('@')[0] || 'anonymous',
         avatar_url: gravatarUrl,
         status: 'online',
         last_seen: new Date().toISOString()
+      }, {
+        onConflict: 'id',
+        ignoreDuplicates: false
       })
       .select()
       .single()

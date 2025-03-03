@@ -1,7 +1,7 @@
 import { WebSearchResponse, WebSearchSettings } from '../types';
 import { WebSearchCacheService } from './web-search-cache-service';
 
-class WebSearchService {
+export class WebSearchService {
   private settings: WebSearchSettings = {
     maxResults: 5,
     searchEngine: 'google',
@@ -91,4 +91,5 @@ class WebSearchService {
 }
 
 // Export as singleton instance
-export const webSearchService = new WebSearchService(); 
+export const webSearchService = new WebSearchService();
+export default webSearchService; 

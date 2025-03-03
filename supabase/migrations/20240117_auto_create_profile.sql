@@ -1,6 +1,7 @@
 -- Remove unique constraint on email if it exists
 ALTER TABLE public.user_profiles DROP CONSTRAINT IF EXISTS user_profiles_email_key;
 ALTER TABLE public.user_profiles DROP CONSTRAINT IF EXISTS users_email_key;
+ALTER TABLE public.user_profiles DROP CONSTRAINT IF EXISTS cco_profiles_user_id_key;
 
 -- Create a function to handle new user creation
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -15,8 +16,8 @@ BEGIN
   )
   ON CONFLICT (id) DO UPDATE
   SET email = EXCLUDED.email,
-      username = EXCLUDED.username,
-      avatar_url = EXCLUDED.avatar_url;
+      username = COALESCE(EXCLUDED.username, user_profiles.username),
+      avatar_url = COALESCE(EXCLUDED.avatar_url, user_profiles.avatar_url);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -39,9 +40,9 @@ DECLARE
   user_record RECORD;
 BEGIN
   FOR user_record IN 
-    SELECT DISTINCT ON (email) id, email, raw_user_meta_data
+    SELECT DISTINCT ON (id) id, email, raw_user_meta_data
     FROM auth.users
-    ORDER BY email, created_at DESC
+    ORDER BY id, created_at DESC
   LOOP
     INSERT INTO public.user_profiles (id, email, username, avatar_url)
     VALUES (
@@ -52,7 +53,7 @@ BEGIN
     )
     ON CONFLICT (id) DO UPDATE
     SET email = EXCLUDED.email,
-        username = EXCLUDED.username,
-        avatar_url = EXCLUDED.avatar_url;
+        username = COALESCE(EXCLUDED.username, user_profiles.username),
+        avatar_url = COALESCE(EXCLUDED.avatar_url, user_profiles.avatar_url);
   END LOOP;
 END $$; 

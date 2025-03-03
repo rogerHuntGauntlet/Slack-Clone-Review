@@ -3,20 +3,21 @@ import fs from 'fs';
 import path from 'path';
 import { TwitterApi } from 'twitter-api-v2';
 import OpenAI from 'openai';
-import { createClient } from 'tavily';
+import { tavily } from '@tavily/core';
 
 const ACCOUNTS_FILE = path.join(process.cwd(), 'data', 'twitter-accounts.json');
 
 export const maxDuration = 60; // Maximum allowed duration for hobby plan
 
-async function generateTweetContent() {
+async function generateTweetContent(): Promise<string> {
   // Initialize Tavily client
-  const tavily = createClient(process.env.NEXT_PUBLIC_TAVILY_API_KEY!);
+  const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY! });
   
   // Search for information about GauntletAI.com
-  const searchResponse = await tavily.search({
-    query: 'GauntletAI.com company information products features',
-    search_depth: 'advanced'
+  const searchResponse = await tvly.search("GauntletAI.com company information products features", {
+    searchDepth: "advanced",
+    maxResults: 5,
+    includeAnswer: true
   });
 
   // Initialize OpenAI client
@@ -39,7 +40,7 @@ async function generateTweetContent() {
     ],
   });
 
-  return completion.choices[0].message.content;
+  return completion.choices[0].message.content || 'Check out GauntletAI.com! #AI #Innovation';
 }
 
 export async function POST() {

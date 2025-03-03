@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { TwitterApi } from 'twitter-api-v2';
 import OpenAI from 'openai';
-import { createClient } from 'tavily';
+import { tavily } from '@tavily/core';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,18 +15,23 @@ export const schedule = '0 10 * * *';
 
 const ACCOUNTS_FILE = path.join(process.cwd(), 'data', 'twitter-accounts.json');
 
-async function generateTweetContent() {
-  const tavily = createClient(process.env.NEXT_PUBLIC_TAVILY_API_KEY!);
+async function generateTweetContent(): Promise<string> {
+  // Initialize Tavily client
+  const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY! });
   
-  const searchResponse = await tavily.search({
-    query: 'GauntletAI.com company information products features',
-    search_depth: 'advanced'
+  // Search for information about GauntletAI.com
+  const searchResponse = await tvly.search("GauntletAI.com company information products features", {
+    searchDepth: "advanced",
+    maxResults: 5,
+    includeAnswer: true
   });
 
+  // Initialize OpenAI client
   const openai = new OpenAI({
     apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
   });
 
+  // Generate tweet content using OpenAI
   const completion = await openai.chat.completions.create({
     model: "gpt-4",
     messages: [
@@ -41,7 +46,7 @@ async function generateTweetContent() {
     ],
   });
 
-  return completion.choices[0].message.content;
+  return completion.choices[0].message.content || 'Check out GauntletAI.com! #AI #Innovation';
 }
 
 export async function GET(request: Request) {
