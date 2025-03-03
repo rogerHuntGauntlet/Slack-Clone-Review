@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import OpenAI from 'openai';
+import { useAgentChat } from '../hooks/useAgentChat';
 
 interface Message {
   role: 'system' | 'user' | 'assistant';
@@ -24,25 +24,20 @@ export const AgentChatModal: React.FC<AgentChatModalProps> = ({
   onClose,
   agent,
 }) => {
-  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const openai = new OpenAI({
-    apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
-    dangerouslyAllowBrowser: true
+  
+  const systemPrompt = agent.systemPrompt || `You are ${agent.name}. ${agent.description}`;
+  const { messages, isLoading, error, sendMessage, resetChat } = useAgentChat({
+    systemPrompt
   });
 
-  // Initialize chat with system message
+  // Reset chat when modal opens
   useEffect(() => {
     if (isOpen) {
-      const systemMessage = {
-        role: 'system' as const,
-        content: agent.systemPrompt || `You are ${agent.name}. ${agent.description}`
-      };
-      setMessages([systemMessage]);
+      resetChat();
     }
-  }, [isOpen, agent]);
+  }, [isOpen, resetChat]);
 
   // Auto scroll to bottom when new messages arrive
   useEffect(() => {
@@ -55,37 +50,13 @@ export const AgentChatModal: React.FC<AgentChatModalProps> = ({
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
 
-    const userMessage = {
-      role: 'user' as const,
-      content: inputValue
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    const currentInput = inputValue;
     setInputValue('');
-    setIsLoading(true);
 
     try {
-      const response = await openai.chat.completions.create({
-        model: "gpt-4",
-        messages: [...messages, userMessage],
-        temperature: 0.7,
-        max_tokens: 500,
-      });
-
-      const assistantMessage = {
-        role: 'assistant' as const,
-        content: response.choices[0].message.content || 'I apologize, but I could not generate a response.'
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
+      await sendMessage(currentInput);
     } catch (error) {
       console.error('Error in chat:', error);
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'I apologize, but there was an error processing your request.'
-      }]);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -127,6 +98,14 @@ export const AgentChatModal: React.FC<AgentChatModalProps> = ({
                 ))}
               </div>
             </div>
+
+            {error && (
+              <div className="mt-4 p-4 bg-red-100 dark:bg-red-900/20 rounded-lg">
+                <p className="text-red-600 dark:text-red-400 text-sm">
+                  {error}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -136,7 +115,7 @@ export const AgentChatModal: React.FC<AgentChatModalProps> = ({
             ref={chatContainerRef}
             className="flex-1 overflow-y-auto p-6 space-y-4"
           >
-            {messages.slice(1).map((message, index) => (
+            {messages.slice(1).map((message: Message, index: number) => (
               <div
                 key={index}
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
