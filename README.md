@@ -2,6 +2,41 @@
 
 A modern Slack clone built with Next.js 13, Supabase, and Tailwind CSS. Features real-time messaging, reactions, thread replies, and file attachments.
 
+## Live Demo
+
+🌐 **Vercel Deployment**: [Slack Clone Demo](https://slack-clone-demo.vercel.app)
+
+## Repository Access
+
+📂 **GitHub Repository**: [Slack Clone Review](https://github.com/rogerHuntGauntlet/Slack-Clone-Review)
+
+To get access to the repository:
+
+1. Clone the repository using:
+
+```bash
+git clone https://github.com/rogerHuntGauntlet/Slack-Clone-Review.git
+cd Slack-Clone-Review
+```
+
+## Deployment
+
+This project is deployed on Vercel. To deploy your own instance:
+
+1. Fork the repository to your GitHub account
+2. Create a new project on [Vercel](https://vercel.com)
+3. Connect your GitHub repository to Vercel
+4. Configure the following environment variables in your Vercel project settings:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+5. Deploy! Vercel will automatically build and deploy your project
+
+The project will automatically deploy when you push changes to the main branch.
+
 ## Features
 
 - 🔄 Real-time messaging and updates
@@ -25,35 +60,41 @@ A modern Slack clone built with Next.js 13, Supabase, and Tailwind CSS. Features
 ## Getting Started
 
 1. Clone the repository:
+
 ```bash
-git clone [your-repo-url]
-cd slack-clone
+git clone https://github.com/rogerHuntGauntlet/Slack-Clone-Review.git
+cd Slack-Clone-Review
 ```
 
 2. Install dependencies:
+
 ```bash
 npm install
 ```
 
 3. Set up environment variables:
-Create a `.env.local` file with the following:
+   Create a `.env.local` file with the following:
+
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
 4. Start the development server:
+
 ```bash
 npm run dev
 ```
 
 5. Initialize and start Supabase:
+
 ```bash
 npx supabase init
 npx supabase start
 ```
 
 6. Run database migrations:
+
 ```bash
 npx supabase db reset
 ```
@@ -72,4 +113,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
