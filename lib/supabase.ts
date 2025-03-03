@@ -978,9 +978,38 @@ export const updateUserProfileId = async (oldEmail: string, newId: string) => {
   }
 };
 
+const createDefaultProfile = async (user: { id: string; email?: string }) => {
+  try {
+    const gravatarUrl = user.email
+      ? `https://www.gravatar.com/avatar/${md5(user.email.toLowerCase().trim())}?d=identicon`
+      : 'https://www.gravatar.com/avatar/default?d=identicon'
+
+    const { data: profile, error: insertError } = await supabase
+      .from('user_profiles')
+      .insert({
+        id: user.id,
+        email: user.email,
+        username: user.email?.split('@')[0] || `user_${user.id.slice(0, 8)}`,
+        avatar_url: gravatarUrl,
+        status: 'online',
+        last_seen: new Date().toISOString()
+      })
+      .select()
+      .single()
+
+    if (insertError) throw insertError
+    return profile
+  } catch (error) {
+    logError('Error in createDefaultProfile:', { error })
+    return null
+  }
+}
+
 export const createUserProfile = async (user: { id: string; email?: string }) => {
   try {
     logInfo('Creating user profile:', { userId: user.id })
+    
+    // First try to get existing profile
     const { data: existingProfile, error: fetchError } = await supabase
       .from('user_profiles')
       .select('*')
@@ -997,6 +1026,7 @@ export const createUserProfile = async (user: { id: string; email?: string }) =>
       ? `https://www.gravatar.com/avatar/${md5(user.email.toLowerCase().trim())}?d=identicon`
       : 'https://www.gravatar.com/avatar/default?d=identicon'
 
+    // Try to create full profile
     const { data: profile, error: insertError } = await supabase
       .from('user_profiles')
       .upsert({
@@ -1014,7 +1044,10 @@ export const createUserProfile = async (user: { id: string; email?: string }) =>
       .single()
 
     if (insertError) {
-      logError('Error creating profile:', { error: insertError })
+      logError('Error creating profile, falling back to default:', { error: insertError })
+      // If full profile creation fails, try default profile
+      const defaultProfile = await createDefaultProfile(user)
+      if (defaultProfile) return defaultProfile
       throw insertError
     }
 
@@ -1022,7 +1055,13 @@ export const createUserProfile = async (user: { id: string; email?: string }) =>
     return profile
   } catch (error) {
     logError('Error in createUserProfile:', { error })
-    throw error
+    // Final fallback - return a minimal profile object
+    return {
+      id: user.id,
+      username: user.email?.split('@')[0] || `user_${user.id.slice(0, 8)}`,
+      email: user.email,
+      status: 'online'
+    }
   }
 }
 

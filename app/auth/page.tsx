@@ -266,15 +266,69 @@ function AuthContent({ workspaceId }: AuthContentProps) {
         throw new Error(`${error.message}\n\nTip: Try signing in with GitHub, Google, Discord, or GitLab for a smoother experience!`)
       }
 
-      // Rest of the sign in logic...
+      // Get current session
       const { data: { session } } = await supabase.auth.getSession()
       debugLog('Current session:', session)
 
-      setMessage('Sign in successful. Setting up your profile...')
-      sessionStorage.setItem('userEmail', email)
-      await sessionStorage.setItem('cookie', JSON.stringify(session))
-      setShouldRefresh(true)  // Trigger auto-refresh
+      if (!session?.user) {
+        throw new Error('No session found after login')
+      }
 
+      setMessage('Sign in successful. Setting up your profile...')
+      
+      try {
+        // Check access records first
+        const { data: accessRecord, error: accessError } = await supabase
+          .from('access_records')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .eq('is_active', true)
+          .single()
+
+        if (!accessRecord || accessError) {
+          debugLog('No access record found - redirecting to access')
+          setMessage('Setting up your account...')
+          router.push('/access?redirectedfromauth=supabase')
+          return
+        }
+
+        // Try to get or create profile
+        const { data: profile, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+
+        if (!profile || profileError) {
+          debugLog('No profile found - creating default profile')
+          // Create a default profile
+          const defaultProfile = await createUserProfile({
+            id: session.user.id,
+            email: session.user.email
+          })
+
+          if (!defaultProfile) {
+            throw new Error('Failed to create profile')
+          }
+        }
+
+        // Store session info
+        sessionStorage.setItem('userEmail', email)
+        await sessionStorage.setItem('cookie', JSON.stringify(session))
+        
+        // Redirect to platform
+        setMessage('Login successful! Redirecting...')
+        setTimeout(() => {
+          router.push('/platform')
+        }, 1500)
+      } catch (error: any) {
+        debugLog('Error in post-login flow:', error)
+        // Even if there's an error, try to proceed to platform
+        setMessage('Login successful! Redirecting...')
+        setTimeout(() => {
+          router.push('/platform')
+        }, 1500)
+      }
     } catch (error: any) {
       setError(error.message)
     } finally {
