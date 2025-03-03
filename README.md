@@ -96,19 +96,46 @@ The project will automatically deploy when you push changes to the main branch.
 
 ## Database Schema
 
-The project uses Supabase as the backend. The database schema is managed through Supabase's interface or migrations. Here's the basic structure:
+The project uses Supabase as the backend. The database schema is managed through Supabase's interface. Here's the basic structure:
 
 ```sql
--- Users table (managed by Supabase Auth)
 -- Messages table
-create table messages (
-  id uuid default uuid_generate_v4() primary key,
+create table public.messages (
+  id uuid default gen_random_uuid() primary key,
   content text not null,
   user_id uuid references auth.users not null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Add more tables as needed
+-- Channels table
+create table public.channels (
+  id uuid default gen_random_uuid() primary key,
+  name text not null,
+  description text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Channel messages
+create table public.channel_messages (
+  id uuid default gen_random_uuid() primary key,
+  channel_id uuid references public.channels on delete cascade not null,
+  message_id uuid references public.messages on delete cascade not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Enable Row Level Security (RLS)
+alter table public.messages enable row level security;
+alter table public.channels enable row level security;
+alter table public.channel_messages enable row level security;
+
+-- Create policies
+create policy "Users can read messages" on public.messages
+  for select using (true);
+
+create policy "Authenticated users can insert messages" on public.messages
+  for insert with check (auth.role() = 'authenticated');
+
+-- Add more tables and policies as needed
 ```
 
 ## Contributing
