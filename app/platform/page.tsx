@@ -1,6 +1,35 @@
 'use client'
 
-import { useState, useEffect, Suspense, useCallback } from 'react'
+import { useState, useEffect, Suspense, useCallback, useMemo } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
+import type { Workspace } from '@/types/supabase'
+
+// Import components that use browser APIs dynamically
+const DynamicChatArea = dynamic(() => import('../../components/ChatArea'), { ssr: false })
+const DynamicDirectMessageArea = dynamic(() => import('../../components/DirectMessageArea'), { ssr: false })
+const DynamicWorkspaceList = dynamic(() => import('../../components/WorkspaceList'), { ssr: false })
+
+// Regular imports
+import Sidebar from '../../components/Sidebar'
+import Header from '../../components/Header'
+import ProfileModal from '../../components/ProfileModal'
+import CollapsibleDMList from '../../components/CollapsibleDMList'
+import ActivityFeed from '../../components/ActivityFeed'
+import { logInfo, logError, logDebug, type LogContext } from '@/lib/logger'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
+import type {
+  WorkspaceListProps,
+  HeaderProps,
+  DMListProps,
+  SidebarProps,
+  ChatAreaProps,
+  DirectMessageAreaProps,
+  ProfileModalProps
+} from '@/types/components'
+import Cookies from 'js-cookie'
+
+// Import Supabase utilities
 import {
   supabase,
   getWorkspaces,
@@ -18,28 +47,6 @@ import {
   updateWorkspace,
   getSupabaseClient
 } from '../../lib/supabase'
-import Sidebar from '../../components/Sidebar'
-import ChatArea from '../../components/ChatArea'
-import Header from '../../components/Header'
-import WorkspaceList from '../../components/WorkspaceList'
-import ProfileModal from '../../components/ProfileModal'
-import { useRouter, useSearchParams } from 'next/navigation'
-import CollapsibleDMList from '../../components/CollapsibleDMList'
-import DirectMessageArea from '../../components/DirectMessageArea'
-import type { Workspace } from '@/types/supabase'
-import ActivityFeed from '../../components/ActivityFeed'
-import { logInfo, logError, logDebug, type LogContext } from '@/lib/logger'
-import { useMediaQuery } from '@/hooks/useMediaQuery'
-import type {
-  WorkspaceListProps,
-  HeaderProps,
-  DMListProps,
-  SidebarProps,
-  ChatAreaProps,
-  DirectMessageAreaProps,
-  ProfileModalProps
-} from '@/types/components'
-import Cookies from 'js-cookie'
 
 // Constants
 const MAX_USERS = 40
@@ -47,27 +54,23 @@ const MAX_USERS = 40
 export default function Platform() {
   const [logs, setLogs] = useState<string[]>([])
 
-  const addLog = (message: string) => {
+  const addLog = useCallback((message: string) => {
     setLogs(prev => [...prev, `${new Date().toLocaleTimeString()} - ${message}`])
-  }
+  }, [])
 
   useEffect(() => {
-    // Set up logger only once when component mounts
-    const originalLog = addLog;
-
-    // Initial logs
     logInfo('Platform mounting')
-
-    // Cleanup
     return () => {
-      // No need to reset since we're using the exported functions
+      // Cleanup if needed
     }
   }, [])
 
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-    </div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    }>
       <PlatformWithParams addLog={addLog} />
     </Suspense>
   )
@@ -76,10 +79,11 @@ export default function Platform() {
 function PlatformWithParams({ addLog }: { addLog: (message: string) => void }) {
   const searchParams = useSearchParams()
   const workspaceId = searchParams.get('workspaceId')
-  console.log('Platform: PlatformWithParams mounting');
-  console.log('Platform: Search params:', Object.fromEntries(searchParams.entries()));
-  console.log('Platform: Extracted workspaceId:', workspaceId);
-  return <PlatformContent addLog={addLog} initialWorkspaceId={workspaceId} />
+  
+  // Ensure workspaceId is properly memoized
+  const memoizedWorkspaceId = useMemo(() => workspaceId, [workspaceId])
+  
+  return <PlatformContent addLog={addLog} initialWorkspaceId={memoizedWorkspaceId} />
 }
 
 function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: string) => void, initialWorkspaceId: string | null }) {
@@ -845,7 +849,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
 
   if (showWorkspaceSelection) {
     return (
-      <WorkspaceList
+      <DynamicWorkspaceList
         workspaces={workspaces as Workspace[]}
         onSelectWorkspace={handleWorkspaceSelect}
         onCreateWorkspace={handleCreateWorkspace}
@@ -936,7 +940,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
             </div>
 
             {activeChannel && (
-              <ChatArea
+              <DynamicChatArea
                 activeWorkspace={activeWorkspace}
                 activeChannel={activeChannel}
                 currentUser={user}
@@ -946,7 +950,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
               />
             )}
             {activeDM && (
-              <DirectMessageArea
+              <DynamicDirectMessageArea
                 currentUser={user}
                 otherUserId={activeDM}
                 isDMListCollapsed={false}
@@ -1063,7 +1067,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
             />
             {activeDM && (
               <div className="w-[25vw] shrink-0">
-                <DirectMessageArea
+                <DynamicDirectMessageArea
                   currentUser={user}
                   otherUserId={activeDM}
                   isDMListCollapsed={isDMListCollapsed}
@@ -1086,7 +1090,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
             {activeWorkspace && activeChannel && user && (
               <div className="flex flex-1 h-full">
                 <div className="flex-1 min-w-0 h-full">
-                  <ChatArea
+                  <DynamicChatArea
                     activeWorkspace={activeWorkspace}
                     activeChannel={activeChannel}
                     currentUser={user}
