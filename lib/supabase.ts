@@ -1,9 +1,31 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/types/supabase'
 import type { MessageType, FileAttachment } from '../types/database'
 import type { RealtimePostgresChangesPayload } from '@supabase/realtime-js'
 import { logInfo, logError, logWarning, logDebug, type LogContext } from '@/lib/logger'
 import { md5 } from './md5'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+// Create a single supabase client for interacting with your database
+export const createBrowserSupabaseClient = () => {
+  return createBrowserClient(
+    supabaseUrl,
+    supabaseAnonKey
+  )
+}
+
+// For server-side usage
+export const createServerSupabaseClient = () => {
+  return createSupabaseClient(
+    supabaseUrl,
+    supabaseAnonKey
+  )
+}
+
+export type { Session } from '@supabase/supabase-js'
 
 // Helper function to safely cast unknown to string
 function safeString(value: unknown): string {
@@ -98,11 +120,11 @@ interface SystemUser {
 logInfo('🔧 [Supabase] Starting Supabase initialization...');
 
 // Create a singleton instance
-let supabaseInstance: ReturnType<typeof createClientComponentClient> | null = null
+let supabaseInstance: ReturnType<typeof createBrowserSupabaseClient> | null = null
 
 export const getSupabaseClient = () => {
   if (!supabaseInstance) {
-    supabaseInstance = createClientComponentClient()
+    supabaseInstance = createBrowserSupabaseClient()
   }
   return supabaseInstance
 }
@@ -111,7 +133,7 @@ export const supabase = getSupabaseClient();
 
 export const testSupabaseConnection = async () => {
   try {
-    logInfo('🔄 [Supabase] Testing connection...', { action: 'test_connection' });
+    logInfo('🔍 [Supabase] Testing connection...', { action: 'test_connection' });
     const { data, error } = await supabase
       .from('user_profiles')
       .select('count', { count: 'exact', head: true });

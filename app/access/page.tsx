@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Session } from '@supabase/supabase-js';
+import { getSupabaseClient, type Session } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { checkUserAccess } from '@/utils/checkAccess';
 
@@ -31,7 +30,7 @@ function AccessPageContent() {
     const [paymentLoading, setPaymentLoading] = useState(false);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-    const supabase = createClientComponentClient();
+    const supabase = getSupabaseClient();
     const router = useRouter();
     const searchParams = useSearchParams();
 

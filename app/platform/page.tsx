@@ -15,7 +15,8 @@ import {
   updateUserProfileId,
   addUserToUniversalWorkspace,
   sendMessage,
-  updateWorkspace
+  updateWorkspace,
+  getSupabaseClient
 } from '../../lib/supabase'
 import Sidebar from '../../components/Sidebar'
 import ChatArea from '../../components/ChatArea'
@@ -25,7 +26,6 @@ import ProfileModal from '../../components/ProfileModal'
 import { useRouter, useSearchParams } from 'next/navigation'
 import CollapsibleDMList from '../../components/CollapsibleDMList'
 import DirectMessageArea from '../../components/DirectMessageArea'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Workspace } from '@/types/supabase'
 import ActivityFeed from '../../components/ActivityFeed'
 import { logInfo, logError, logDebug, type LogContext } from '@/lib/logger'
@@ -39,8 +39,7 @@ import type {
   DirectMessageAreaProps,
   ProfileModalProps
 } from '@/types/components'
-import Cookies from 'js-cookie';
-import { useSession } from 'next-auth/react'
+import Cookies from 'js-cookie'
 
 // Constants
 const MAX_USERS = 40
@@ -115,8 +114,8 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
   const [showMobileChat, setShowMobileChat] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
 
-  const supabase = createClientComponentClient()
-  const { data: session } = useSession()
+  const supabase = getSupabaseClient()
+  const [session, setSession] = useState<any>(null)
   const [messages, setMessages] = useState<any[]>([])
   const [currentDirectMessage, setCurrentDirectMessage] = useState<any>(null)
 
@@ -212,26 +211,26 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
     const checkUser = async () => {
       setLoading(true)
       try {
-        let session;
-        const { data: { session: supabaseSession }, error: supabaseError } = await supabase.auth.getSession();
-        session = supabaseSession;
+        const { data: { session: supabaseSession }, error: supabaseError } = await supabase.auth.getSession()
+        setSession(supabaseSession)
 
-        if (!session) {
+        if (!supabaseSession) {
           console.log("no session found, checking for cookie: ", supabaseError)
           try {
-            session = JSON.parse(sessionStorage.getItem('cookie') || '{}');
-            console.log("session from cookie: ", session)
+            const cookieSession = JSON.parse(sessionStorage.getItem('cookie') || '{}')
+            console.log("session from cookie: ", cookieSession)
+            setSession(cookieSession)
           } catch (err) {
-            throw new Error('No session latofrm 122 catch error: ' + err);
+            throw new Error('No session platform 122 catch error: ' + err)
           }
         }
 
-        if (session && session.user) {
+        if (supabaseSession && supabaseSession.user) {
           // Check for access records before proceeding
           const { data: accessRecord } = await supabase
             .from('access_records')
             .select('*')
-            .eq('user_id', session.user.id)
+            .eq('user_id', supabaseSession.user.id)
             .eq('is_active', true)
             .single();
 
@@ -239,7 +238,7 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
           const { data: paymentRecord } = await supabase
             .from('payment_records')
             .select('*')
-            .eq('user_id', session.user.id)
+            .eq('user_id', supabaseSession.user.id)
             .eq('status', 'active')
             .single();
 
@@ -252,12 +251,12 @@ function PlatformContent({ addLog, initialWorkspaceId }: { addLog: (message: str
           }
 
           setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            username: session.user.user_metadata.username
+            id: supabaseSession.user.id,
+            email: supabaseSession.user.email || '',
+            username: supabaseSession.user.user_metadata.username
           })
-          logInfo('Session found', { userId: session.user.id })
-          const userData = await getUserByEmail(session.user.email)
+          logInfo('Session found', { userId: supabaseSession.user.id })
+          const userData = await getUserByEmail(supabaseSession.user.email)
           if (userData) {
             setUser(userData)
             await fetchUserData(userData.id, userData.email)

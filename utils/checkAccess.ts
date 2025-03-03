@@ -1,7 +1,7 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getSupabaseClient } from '@/lib/supabase';
 
 export async function checkUserAccess(userId: string): Promise<boolean> {
-  const supabase = createClientComponentClient();
+  const supabase = getSupabaseClient();
 
   try {
     // Check founder codes
